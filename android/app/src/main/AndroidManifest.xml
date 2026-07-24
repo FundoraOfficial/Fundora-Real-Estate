@@ -1,6 +1,5 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8" ?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -10,27 +9,22 @@
         android:usesCleartextTraffic="true"
         android:networkSecurityConfig="@xml/network_security_config"
         android:theme="@style/AppTheme">
-
         <!-- TWA (Trusted Web Activity) Metadata Configuration -->
-        <meta-data
-            android:name="android.support.customtabs.trusted.DEFAULT_URL"
-            android:value="https://fundora.one" />
+        <meta-data android:name="android.support.customtabs.trusted.DEFAULT_URL" android:value="https://fundora.one" />
 
-        <meta-data
-            android:name="android.support.customtabs.trusted.STATUS_BAR_COLOR"
-            android:value="#030514" />
+        <meta-data android:name="android.support.customtabs.trusted.STATUS_BAR_COLOR" android:value="#030514" />
 
-        <meta-data
-            android:name="android.support.customtabs.trusted.NAVIGATION_BAR_COLOR"
-            android:value="#030514" />
+        <meta-data android:name="android.support.customtabs.trusted.NAVIGATION_BAR_COLOR" android:value="#030514" />
 
         <meta-data
             android:name="android.support.customtabs.trusted.SPLASH_IMAGE_FADE_OUT_DURATION"
-            android:value="1000" />
+            android:value="1000"
+        />
 
         <meta-data
             android:name="android.support.customtabs.trusted.FILE_PROVIDER_AUTHORITY"
-            android:value="one.fundora.app.fileprovider" />
+            android:value="one.fundora.app.fileprovider"
+        />
 
         <!-- TWA Launcher Activity (Disabled to favor real Capacitor MainActivity launcher with native Biometric & OTP support) -->
         <!--
@@ -70,9 +64,7 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data
-                    android:scheme="https"
-                    android:host="fundora.one" />
+                <data android:scheme="https" android:host="fundora.one" />
             </intent-filter>
         </activity>
 
@@ -81,9 +73,7 @@
             android:authorities="${applicationId}.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true">
-            <meta-data
-                android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/file_paths"></meta-data>
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>
     </application>
 
