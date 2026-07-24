@@ -2375,7 +2375,7 @@ export default function UserDashboard({
                     {/* Meta stats */}
                     <div className="grid grid-cols-3 gap-1 bg-slate-950/40 p-2.5 rounded-xl text-center font-mono text-[10px] border border-indigo-500/15 shadow-inner">
                       <div>
-                        <span className="block text-indigo-300/70 text-[8.5px] uppercase tracking-wider mb-0.5 truncate" title="ROI per Year">ROI / Yr</span>
+                        <span className="block text-indigo-300/70 text-[8.5px] uppercase tracking-wider mb-0.5 truncate" title="Expected ROI">ROI</span>
                         <span className="text-[11px] sm:text-xs font-bold text-emerald-400">+{project.expectedRoi}%</span>
                       </div>
                       <div>

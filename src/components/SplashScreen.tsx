@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ShieldCheck, Sparkles, Building2 } from 'lucide-react';
+import fundoraLogoImg from '../assets/images/fundora_logo_1784832076498.jpg';
 
 interface SplashScreenProps {
   onFinish?: () => void;
@@ -124,15 +125,11 @@ export default function SplashScreen({ onFinish, duration = 2800 }: SplashScreen
               }}
               className="relative p-3 rounded-3xl bg-gradient-to-b from-white/10 to-white/0 border border-white/20 shadow-2xl"
             >
-              <div className="relative w-32 h-32 md:w-36 md:h-36 rounded-2xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex items-center justify-center bg-black/40">
+              <div className="relative w-36 h-36 md:w-44 md:h-44 rounded-2xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex items-center justify-center bg-slate-900/90 border border-white/10 p-2">
                 <img
-                  src="/splash-logo.png"
+                  src={fundoraLogoImg}
                   alt="Fundora Logo"
-                  className="w-full h-full object-cover rounded-2xl filter drop-shadow-[0_10px_20px_rgba(0,0,0,0.4)]"
-                  onError={(e) => {
-                    // Fallback to /logo.png if splash-logo isn't ready
-                    (e.target as HTMLImageElement).src = '/logo.png';
-                  }}
+                  className="w-full h-full object-contain rounded-xl filter drop-shadow-[0_10px_20px_rgba(0,0,0,0.4)]"
                 />
               </div>
 
