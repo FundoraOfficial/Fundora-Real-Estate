@@ -13,7 +13,7 @@ import { generateReceiptPDF, generateDocumentPDF } from '../utils/pdfReceipt';
 import { 
   TrendingUp, Wallet, ArrowDownCircle, ArrowUpCircle, Users, Percent, Gift, Clock,
   Building, MapPin, Search, Filter, ShieldCheck, ChevronRight, ChevronLeft, Calculator, CheckCircle2,
-  AlertTriangle, Copy, Trash, Upload, Landmark, Sparkles, RefreshCw, X, ChevronDown, Award,
+  AlertTriangle, Copy, Trash, Upload, Landmark, Sparkles, RefreshCw, X, XCircle, ChevronDown, Award,
   FileText, Plus, User, Lock, Check, Crown, Shield, Download, Printer, ZoomIn, ZoomOut, Eye,
   ArrowDownLeft, ArrowUpRight, Briefcase, Coins, History, ListFilter, Calendar, Fingerprint
 } from 'lucide-react';
@@ -218,7 +218,8 @@ export default function UserDashboard({
   const [depositAmount, setDepositAmount] = useState<number>(0);
   const [depositNetwork, setDepositNetwork] = useState<'TRC20' | 'BEP20'>('TRC20');
   const [depositHashInput, setDepositHashInput] = useState('');
-  const [depositProofInput, setDepositProofInput] = useState(''); // Text representation / simulated file
+  const [depositProofInput, setDepositProofInput] = useState(''); // Stores base64 image data or URL
+  const [depositProofFileName, setDepositProofFileName] = useState(''); // Original file name for display
   const [isReceiptAutoFetched, setIsReceiptAutoFetched] = useState(false);
   const [depositSuccessMsg, setDepositSuccessMsg] = useState('');
   const [isAnalyzingReceipt, setIsAnalyzingReceipt] = useState(false);
@@ -351,6 +352,14 @@ export default function UserDashboard({
   const [kycFileSize, setKycFileSize] = useState<string>('');
   const kycFileInputRef = useRef<HTMLInputElement>(null);
   const [isKycDragging, setIsKycDragging] = useState(false);
+
+  // Back side KYC States for Identity Card
+  const [kycFileNameBack, setKycFileNameBack] = useState('');
+  const [kycFilePreviewBack, setKycFilePreviewBack] = useState<string | null>(null);
+  const [kycFileSizeBack, setKycFileSizeBack] = useState<string>('');
+  const kycFileInputRefBack = useRef<HTMLInputElement>(null);
+  const [isKycDraggingBack, setIsKycDraggingBack] = useState(false);
+
   const [kycStatus, setKycStatus] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // Device Detection State
@@ -661,13 +670,21 @@ export default function UserDashboard({
     showStatus("Biometric quick access has been disabled.", "info");
   };
 
-  const handleKycFileSelect = (file: File) => {
+  const handleKycFileSelect = (file: File, isBack: boolean = false) => {
     if (!file) return;
-    setKycFileName(file.name);
+    if (isBack) {
+      setKycFileNameBack(file.name);
+    } else {
+      setKycFileName(file.name);
+    }
     
     // Format size
     const sizeInMB = file.size / (1024 * 1024);
-    setKycFileSize(`${sizeInMB.toFixed(2)} MB`);
+    if (isBack) {
+      setKycFileSizeBack(`${sizeInMB.toFixed(2)} MB`);
+    } else {
+      setKycFileSize(`${sizeInMB.toFixed(2)} MB`);
+    }
 
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -701,20 +718,36 @@ export default function UserDashboard({
           if (ctx) {
             ctx.drawImage(img, 0, 0, width, height);
             const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
-            setKycFilePreview(compressedDataUrl);
+            if (isBack) {
+              setKycFilePreviewBack(compressedDataUrl);
+            } else {
+              setKycFilePreview(compressedDataUrl);
+            }
             
             // Calculate actual base64 length in bytes to show dynamic compressed size
             const head = 'data:image/jpeg;base64,';
             const sizeInBytes = Math.round((compressedDataUrl.length - head.length) * 3 / 4);
             const sizeInKB = sizeInBytes / 1024;
-            setKycFileSize(`${(sizeInKB / 1024).toFixed(2)} MB (Compressed)`);
+            if (isBack) {
+              setKycFileSizeBack(`${(sizeInKB / 1024).toFixed(2)} MB (Compressed)`);
+            } else {
+              setKycFileSize(`${(sizeInKB / 1024).toFixed(2)} MB (Compressed)`);
+            }
           } else {
-            setKycFilePreview(dataUrl);
+            if (isBack) {
+              setKycFilePreviewBack(dataUrl);
+            } else {
+              setKycFilePreview(dataUrl);
+            }
           }
         };
         img.src = dataUrl;
       } else {
-        setKycFilePreview(dataUrl);
+        if (isBack) {
+          setKycFilePreviewBack(dataUrl);
+        } else {
+          setKycFilePreview(dataUrl);
+        }
       }
     };
     reader.readAsDataURL(file);
@@ -991,6 +1024,7 @@ export default function UserDashboard({
     showStatus("Deposit receipt logged under status: PENDING verification.", "success");
     setDepositHashInput('');
     setDepositProofInput('');
+    setDepositProofFileName('');
   };
 
   const compressAndResizeImage = (base64Str: string, maxW = 1000, maxH = 1000): Promise<string> => {
@@ -1035,6 +1069,7 @@ export default function UserDashboard({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setDepositProofFileName(file.name);
     setDepositProofInput(file.name);
     setIsAnalyzingReceipt(true);
     setScanErrorMessage(null);
@@ -1215,8 +1250,9 @@ export default function UserDashboard({
             }
           }
 
-          // Store proof attachment name/data
-          setDepositProofInput(file.name || 'receipt_screenshot.jpg');
+          // Store proof attachment base64 data and file name
+          setDepositProofInput(base64Data || rawBase64 || file.name || 'receipt_screenshot.jpg');
+          setDepositProofFileName(file.name || 'receipt_screenshot.jpg');
 
           if (resultData) {
             let { txid, amount, network } = resultData;
@@ -3330,9 +3366,20 @@ ${activeViewDoc.project.description}`
                           <Upload className="w-5.5 h-5.5 text-rose-400" />
                           <div className="space-y-0.5">
                             {depositProofInput ? (
-                              <div className="space-y-1">
-                                <span className="text-[10px] text-emerald-400 font-bold block max-w-[220px] truncate mx-auto">✓ {depositProofInput}</span>
-                                <span className="text-[8px] text-emerald-400 bg-emerald-500/15 border border-emerald-500/25 px-2 py-0.5 rounded uppercase font-black inline-block">Proof Attached</span>
+                              <div className="space-y-1.5 flex flex-col items-center">
+                                {depositProofInput.startsWith('data:image') || depositProofInput.startsWith('http') || depositProofInput.startsWith('blob:') ? (
+                                  <img 
+                                    src={depositProofInput} 
+                                    alt="Attached screenshot preview" 
+                                    className="w-16 h-16 object-cover rounded-lg border border-emerald-500/50 shadow-md" 
+                                  />
+                                ) : null}
+                                <span className="text-[10px] text-emerald-400 font-bold block max-w-[220px] truncate mx-auto font-mono">
+                                  ✓ {depositProofFileName || (depositProofInput.startsWith('data:') ? 'Screenshot Attached' : depositProofInput)}
+                                </span>
+                                <span className="text-[8px] text-emerald-400 bg-emerald-500/15 border border-emerald-500/25 px-2 py-0.5 rounded uppercase font-black inline-block">
+                                  Screenshot Attached
+                                </span>
                               </div>
                             ) : (
                               <div className="space-y-0.5">
@@ -3383,6 +3430,7 @@ ${activeViewDoc.project.description}`
                           type="button"
                           onClick={() => {
                             setDepositProofInput('');
+                            setDepositProofFileName('');
                             setDepositAmount(0);
                             setDepositHashInput('');
                             setIsReceiptAutoFetched(false);
@@ -4649,15 +4697,27 @@ ${activeViewDoc.project.description}`
               ) : (
                 <div className="space-y-5 pt-1">
                   
-                  <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 text-amber-300 rounded-xl text-xs space-y-1">
-                    <div className="font-bold flex items-center gap-1.5">
-                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                      <span>Action Required: KYC Papers Missing</span>
+                  {activeUser.kycStatus === 'Rejected' ? (
+                    <div className="p-4 bg-rose-500/15 border border-rose-500/40 text-rose-300 rounded-2xl text-xs space-y-1.5 shadow-lg">
+                      <div className="font-bold flex items-center gap-2 text-rose-400 text-sm">
+                        <XCircle className="w-5 h-5 text-rose-400 shrink-0" />
+                        <span>KYC Verification Rejected / Action Required</span>
+                      </div>
+                      <p className="text-rose-200/95 leading-relaxed text-[11px]">
+                        Your previous KYC identity papers were declined by compliance auditors. The pending lock has been removed so you can resubmit. Please review your legal full name, country, and attach a clear scanned identity document below to submit again.
+                      </p>
                     </div>
-                    <p className="text-amber-200 leading-normal text-[11px]">
-                      Your account identity verification is currently unverified. Please submit your identity papers to unlock full withdraw access and premium high-yield Canary Wharf shares.
-                    </p>
-                  </div>
+                  ) : (
+                    <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 text-amber-300 rounded-xl text-xs space-y-1">
+                      <div className="font-bold flex items-center gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <span>Action Required: KYC Papers Missing</span>
+                      </div>
+                      <p className="text-amber-200 leading-normal text-[11px]">
+                        Your account identity verification is currently unverified. Please submit your identity papers to unlock full withdraw access and premium high-yield Canary Wharf shares.
+                      </p>
+                    </div>
+                  )}
 
                   {kycStatus && (
                     <div className={`p-3 rounded-xl text-xs ${kycStatus.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'}`}>
@@ -4665,12 +4725,14 @@ ${activeViewDoc.project.description}`
                     </div>
                   )}
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div className="space-y-5">
                     
                     {/* Information form fields */}
-                    <div className="space-y-3.5">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div>
-                        <label className="block text-[10px] font-bold text-indigo-300 uppercase tracking-wider mb-1">Legal Full Name</label>
+                        <label className="block text-[10px] font-bold text-indigo-300 uppercase tracking-wider mb-1">
+                          Legal Full Name <span className="text-rose-500 font-bold ml-0.5">*</span>
+                        </label>
                         <input
                           type="text"
                           value={kycFullNameInput}
@@ -4681,7 +4743,9 @@ ${activeViewDoc.project.description}`
                       </div>
 
                       <div>
-                        <label className="block text-[10px] font-bold text-indigo-300 uppercase tracking-wider mb-1">Country of Residence</label>
+                        <label className="block text-[10px] font-bold text-indigo-300 uppercase tracking-wider mb-1">
+                          Country of Residence <span className="text-rose-500 font-bold ml-0.5">*</span>
+                        </label>
                         <select
                           value={kycCountryInput}
                           onChange={(e) => setKycCountryInput(e.target.value)}
@@ -4721,96 +4785,259 @@ ${activeViewDoc.project.description}`
                           <option value="Other" className="bg-[#0e112d]">Other</option>
                         </select>
                       </div>
+
                       <div>
-                        <label className="block text-[10px] font-bold text-indigo-300 uppercase tracking-wider mb-1">Document Type</label>
+                        <label className="block text-[10px] font-bold text-indigo-300 uppercase tracking-wider mb-1">
+                          Document Type <span className="text-rose-500 font-bold ml-0.5">*</span>
+                        </label>
                         <select
                           value={kycDocType}
                           onChange={(e) => setKycDocType(e.target.value)}
                           className="w-full px-3.5 py-2 border border-indigo-500/30 rounded-xl text-xs font-medium focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none text-white bg-[#060819]"
                         >
                           <option value="Passport" className="bg-[#0e112d]">Passport</option>
-                          <option value="National ID Card" className="bg-[#0e112d]">National ID Card</option>
-                          <option value="Driver's License" className="bg-[#0e112d]">Driver's License</option>
+                          <option value="Identity Card" className="bg-[#0e112d]">Identity Card</option>
+                          <option value="Driving License" className="bg-[#0e112d]">Driving License</option>
                         </select>
                       </div>
                     </div>
 
-                    {/* Drag and Drop area */}
-                    <div className="space-y-1">
-                      <label className="block text-[10px] font-bold text-indigo-300 uppercase tracking-wider mb-1">Upload Scanned Document Copy</label>
-                      <input 
-                        type="file" 
-                        id="kyc-file-input"
-                        ref={kycFileInputRef}
-                        className="sr-only"
-                        accept="image/*,application/pdf"
-                        onChange={(e) => {
-                          if (e.target.files && e.target.files[0]) {
-                            handleKycFileSelect(e.target.files[0]);
-                          }
-                          e.target.value = ''; // Reset to allow re-selecting the same file if needed
-                        }}
-                      />
-                      <div
-                        onClick={() => {
-                          kycFileInputRef.current?.click();
-                        }}
-                        onDragOver={(e) => {
-                          e.preventDefault();
-                          setIsKycDragging(true);
-                        }}
-                        onDragLeave={() => setIsKycDragging(false)}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          setIsKycDragging(false);
-                          if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-                            handleKycFileSelect(e.dataTransfer.files[0]);
-                          }
-                        }}
-                        className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all flex flex-col items-center justify-center space-y-2 select-none min-h-[140px] block ${
-                          isKycDragging 
-                            ? 'border-indigo-400 bg-indigo-500/10' 
-                            : kycFileName 
-                              ? 'border-emerald-500/40 bg-emerald-500/5' 
-                              : 'border-indigo-500/20 bg-[#060819] hover:bg-[#13163a]'
-                        }`}
-                      >
-                        {kycFileName ? (
-                          <>
-                            {kycFilePreview && kycFilePreview.startsWith('data:image/') ? (
-                              <div className="relative w-16 h-16 rounded-lg overflow-hidden border border-[#13163a] shadow-sm mb-1">
-                                <img src={kycFilePreview} alt="Doc Preview" className="w-full h-full object-cover" />
-                              </div>
+                    {/* File Upload Area */}
+                    {(kycDocType === 'Identity Card' || kycDocType === 'National ID Card') ? (
+                      /* Dual Upload for Identity Card (Front & Back) */
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {/* Front Side Upload */}
+                        <div className="space-y-1">
+                          <label className="block text-[10px] font-bold text-indigo-300 uppercase tracking-wider mb-1">
+                            Front Side Image <span className="text-rose-500 font-bold ml-0.5">*</span>
+                          </label>
+                          <input 
+                            type="file" 
+                            id="kyc-file-input-front"
+                            ref={kycFileInputRef}
+                            className="sr-only"
+                            accept="image/*,application/pdf"
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                handleKycFileSelect(e.target.files[0], false);
+                              }
+                              e.target.value = '';
+                            }}
+                          />
+                          <div
+                            onClick={() => kycFileInputRef.current?.click()}
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              setIsKycDragging(true);
+                            }}
+                            onDragLeave={() => setIsKycDragging(false)}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              setIsKycDragging(false);
+                              if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                                handleKycFileSelect(e.dataTransfer.files[0], false);
+                              }
+                            }}
+                            className={`border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all flex flex-col items-center justify-center space-y-2 select-none min-h-[130px] ${
+                              isKycDragging 
+                                ? 'border-indigo-400 bg-indigo-500/10' 
+                                : kycFileName 
+                                  ? 'border-emerald-500/40 bg-emerald-500/5' 
+                                  : 'border-indigo-500/20 bg-[#060819] hover:bg-[#13163a]'
+                            }`}
+                          >
+                            {kycFileName ? (
+                              <>
+                                {kycFilePreview && kycFilePreview.startsWith('data:image/') ? (
+                                  <div className="relative w-14 h-14 rounded-lg overflow-hidden border border-[#13163a] shadow-sm mb-0.5">
+                                    <img src={kycFilePreview} alt="Front Preview" className="w-full h-full object-cover" />
+                                  </div>
+                                ) : (
+                                  <div className="w-9 h-9 bg-emerald-500/20 rounded-full flex items-center justify-center text-emerald-400 mb-0.5">
+                                    <FileText className="w-4 h-4 text-emerald-400" />
+                                  </div>
+                                )}
+                                <div className="space-y-0.5">
+                                  <span className="block text-xs font-black text-white">Front Side Uploaded</span>
+                                  <span className="block text-[10px] font-mono text-emerald-400 max-w-xs truncate">{kycFileName}</span>
+                                  {kycFileSize && (
+                                    <span className="block text-[9px] text-indigo-300 font-mono">{kycFileSize}</span>
+                                  )}
+                                </div>
+                                <span className="text-[8px] text-indigo-300 font-mono">Click to change front image</span>
+                              </>
                             ) : (
-                              <div className="w-10 h-10 bg-emerald-500/20 rounded-full flex items-center justify-center text-emerald-400 mb-1">
-                                <FileText className="w-5 h-5 text-emerald-400" />
-                              </div>
+                              <>
+                                <div className="w-9 h-9 bg-indigo-500/10 rounded-full flex items-center justify-center text-indigo-300">
+                                  <Upload className="w-4 h-4" />
+                                </div>
+                                <div className="space-y-0.5">
+                                  <span className="block text-xs font-black text-white">Front Side Image</span>
+                                  <p className="text-[10px] text-indigo-300 leading-normal">
+                                    <strong className="text-indigo-400">Click or Drag</strong> Front image here
+                                  </p>
+                                </div>
+                                <span className="text-[8px] text-indigo-350 font-mono">PNG, JPG up to 10MB</span>
+                              </>
                             )}
-                            <div className="space-y-0.5">
-                              <span className="block text-xs font-black text-white">Document Attached Successfully</span>
-                              <span className="block text-[10px] font-mono text-emerald-400 max-w-xs truncate">{kycFileName}</span>
-                              {kycFileSize && (
-                                <span className="block text-[9px] text-indigo-300 font-mono">Size: {kycFileSize}</span>
-                              )}
-                            </div>
-                            <span className="text-[9px] text-indigo-300 font-mono">Click again to replace file</span>
-                          </>
-                        ) : (
-                          <>
-                            <div className="w-10 h-10 bg-indigo-500/10 rounded-full flex items-center justify-center text-indigo-300">
-                              <Upload className="w-5 h-5" />
-                            </div>
-                            <div className="space-y-0.5">
-                              <span className="block text-xs font-black text-white">Drag & Drop Scanned Document here</span>
-                              <p className="text-[10px] text-indigo-300 leading-normal font-sans max-w-xs mx-auto">
-                                or <strong className="text-indigo-400">Click here to select document</strong> from file directory
-                              </p>
-                            </div>
-                            <span className="text-[8px] text-indigo-350 font-mono">Supports PNG, JPG, PDF up to 10MB</span>
-                          </>
-                        )}
+                          </div>
+                        </div>
+
+                        {/* Back Side Upload */}
+                        <div className="space-y-1">
+                          <label className="block text-[10px] font-bold text-indigo-300 uppercase tracking-wider mb-1">
+                            Back Side Image <span className="text-rose-500 font-bold ml-0.5">*</span>
+                          </label>
+                          <input 
+                            type="file" 
+                            id="kyc-file-input-back"
+                            ref={kycFileInputRefBack}
+                            className="sr-only"
+                            accept="image/*,application/pdf"
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                handleKycFileSelect(e.target.files[0], true);
+                              }
+                              e.target.value = '';
+                            }}
+                          />
+                          <div
+                            onClick={() => kycFileInputRefBack.current?.click()}
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              setIsKycDraggingBack(true);
+                            }}
+                            onDragLeave={() => setIsKycDraggingBack(false)}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              setIsKycDraggingBack(false);
+                              if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                                handleKycFileSelect(e.dataTransfer.files[0], true);
+                              }
+                            }}
+                            className={`border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all flex flex-col items-center justify-center space-y-2 select-none min-h-[130px] ${
+                              isKycDraggingBack 
+                                ? 'border-indigo-400 bg-indigo-500/10' 
+                                : kycFileNameBack 
+                                  ? 'border-emerald-500/40 bg-emerald-500/5' 
+                                  : 'border-indigo-500/20 bg-[#060819] hover:bg-[#13163a]'
+                            }`}
+                          >
+                            {kycFileNameBack ? (
+                              <>
+                                {kycFilePreviewBack && kycFilePreviewBack.startsWith('data:image/') ? (
+                                  <div className="relative w-14 h-14 rounded-lg overflow-hidden border border-[#13163a] shadow-sm mb-0.5">
+                                    <img src={kycFilePreviewBack} alt="Back Preview" className="w-full h-full object-cover" />
+                                  </div>
+                                ) : (
+                                  <div className="w-9 h-9 bg-emerald-500/20 rounded-full flex items-center justify-center text-emerald-400 mb-0.5">
+                                    <FileText className="w-4 h-4 text-emerald-400" />
+                                  </div>
+                                )}
+                                <div className="space-y-0.5">
+                                  <span className="block text-xs font-black text-white">Back Side Uploaded</span>
+                                  <span className="block text-[10px] font-mono text-emerald-400 max-w-xs truncate">{kycFileNameBack}</span>
+                                  {kycFileSizeBack && (
+                                    <span className="block text-[9px] text-indigo-300 font-mono">{kycFileSizeBack}</span>
+                                  )}
+                                </div>
+                                <span className="text-[8px] text-indigo-300 font-mono">Click to change back image</span>
+                              </>
+                            ) : (
+                              <>
+                                <div className="w-9 h-9 bg-indigo-500/10 rounded-full flex items-center justify-center text-indigo-300">
+                                  <Upload className="w-4 h-4" />
+                                </div>
+                                <div className="space-y-0.5">
+                                  <span className="block text-xs font-black text-white">Back Side Image</span>
+                                  <p className="text-[10px] text-indigo-300 leading-normal">
+                                    <strong className="text-indigo-400">Click or Drag</strong> Back image here
+                                  </p>
+                                </div>
+                                <span className="text-[8px] text-indigo-350 font-mono">PNG, JPG up to 10MB</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      /* Single Upload for Passport or Driving License */
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold text-indigo-300 uppercase tracking-wider mb-1">
+                          Upload Scanned Document Copy <span className="text-rose-500 font-bold ml-0.5">*</span>
+                        </label>
+                        <input 
+                          type="file" 
+                          id="kyc-file-input"
+                          ref={kycFileInputRef}
+                          className="sr-only"
+                          accept="image/*,application/pdf"
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files[0]) {
+                              handleKycFileSelect(e.target.files[0], false);
+                            }
+                            e.target.value = '';
+                          }}
+                        />
+                        <div
+                          onClick={() => kycFileInputRef.current?.click()}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            setIsKycDragging(true);
+                          }}
+                          onDragLeave={() => setIsKycDragging(false)}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            setIsKycDragging(false);
+                            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                              handleKycFileSelect(e.dataTransfer.files[0], false);
+                            }
+                          }}
+                          className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all flex flex-col items-center justify-center space-y-2 select-none min-h-[140px] block ${
+                            isKycDragging 
+                              ? 'border-indigo-400 bg-indigo-500/10' 
+                              : kycFileName 
+                                ? 'border-emerald-500/40 bg-emerald-500/5' 
+                                : 'border-indigo-500/20 bg-[#060819] hover:bg-[#13163a]'
+                          }`}
+                        >
+                          {kycFileName ? (
+                            <>
+                              {kycFilePreview && kycFilePreview.startsWith('data:image/') ? (
+                                <div className="relative w-16 h-16 rounded-lg overflow-hidden border border-[#13163a] shadow-sm mb-1">
+                                  <img src={kycFilePreview} alt="Doc Preview" className="w-full h-full object-cover" />
+                                </div>
+                              ) : (
+                                <div className="w-10 h-10 bg-emerald-500/20 rounded-full flex items-center justify-center text-emerald-400 mb-1">
+                                  <FileText className="w-5 h-5 text-emerald-400" />
+                                </div>
+                              )}
+                              <div className="space-y-0.5">
+                                <span className="block text-xs font-black text-white">Document Attached Successfully</span>
+                                <span className="block text-[10px] font-mono text-emerald-400 max-w-xs truncate">{kycFileName}</span>
+                                {kycFileSize && (
+                                  <span className="block text-[9px] text-indigo-300 font-mono">Size: {kycFileSize}</span>
+                                )}
+                              </div>
+                              <span className="text-[9px] text-indigo-300 font-mono">Click again to replace file</span>
+                            </>
+                          ) : (
+                            <>
+                              <div className="w-10 h-10 bg-indigo-500/10 rounded-full flex items-center justify-center text-indigo-300">
+                                <Upload className="w-5 h-5" />
+                              </div>
+                              <div className="space-y-0.5">
+                                <span className="block text-xs font-black text-white">Drag & Drop Scanned Document here</span>
+                                <p className="text-[10px] text-indigo-300 leading-normal font-sans max-w-xs mx-auto">
+                                  or <strong className="text-indigo-400">Click here to select document</strong> from file directory
+                                </p>
+                              </div>
+                              <span className="text-[8px] text-indigo-350 font-mono">Supports PNG, JPG, PDF up to 10MB</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )}
 
                   </div>
 
@@ -4820,9 +5047,17 @@ ${activeViewDoc.project.description}`
                         setKycStatus({ message: 'Please enter your Legal Full Name and Country of Residence.', type: 'error' });
                         return;
                       }
-                      if (!kycFileName) {
-                        setKycStatus({ message: 'Please upload or click to attach your Scanned Document.', type: 'error' });
-                        return;
+                      const isIdCard = kycDocType === 'Identity Card' || kycDocType === 'National ID Card';
+                      if (isIdCard) {
+                        if (!kycFileName || !kycFileNameBack) {
+                          setKycStatus({ message: 'Please upload both Front and Back images of your Identity Card to submit KYC.', type: 'error' });
+                          return;
+                        }
+                      } else {
+                        if (!kycFileName) {
+                          setKycStatus({ message: 'Please upload your scanned document copy to submit KYC.', type: 'error' });
+                          return;
+                        }
                       }
                       onUpdateUser({
                         kycStatus: 'Under Review',
@@ -4830,7 +5065,9 @@ ${activeViewDoc.project.description}`
                         kycCountry: kycCountryInput,
                         kycDocumentType: kycDocType,
                         kycDocumentUrl: kycFilePreview || undefined,
-                        kycDocumentFileName: kycFileName || undefined
+                        kycDocumentFileName: kycFileName || undefined,
+                        kycDocumentUrlBack: isIdCard ? (kycFilePreviewBack || undefined) : undefined,
+                        kycDocumentFileNameBack: isIdCard ? (kycFileNameBack || undefined) : undefined,
                       });
                       setKycStatus({ message: 'Success! Your identity documents have been submitted and are under review.', type: 'success' });
                     }}

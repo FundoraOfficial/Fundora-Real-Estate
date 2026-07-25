@@ -76,12 +76,14 @@ export interface UserAccount {
   isEmailVerified: boolean;
   registrationDate: string;
   avatarUrl?: string;
-  kycStatus?: 'Unverified' | 'Under Review' | 'Verified';
+  kycStatus?: 'Unverified' | 'Under Review' | 'Verified' | 'Rejected';
   kycFullName?: string;
   kycCountry?: string;
   kycDocumentType?: string;
   kycDocumentUrl?: string;
   kycDocumentFileName?: string;
+  kycDocumentUrlBack?: string;
+  kycDocumentFileNameBack?: string;
   password?: string;
   webAuthnEnabled?: boolean;
   webAuthnCredentialId?: string;

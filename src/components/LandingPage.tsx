@@ -812,7 +812,7 @@ export default function LandingPage({
                 <span className="p-2 bg-slate-900 text-amber-400 rounded-lg"><MessageCircle className="w-4 h-4" /></span>
                 <div>
                   <span className="text-slate-500 block uppercase font-bold text-[10px]">Expats Compliance Desk</span>
-                  <span className="text-slate-200 text-xs text-emerald-400">support@fundora.one</span>
+                  <span className="text-slate-200 text-xs text-emerald-400">fundora.one@gmail.com</span>
                 </div>
               </div>
               <div className="flex items-center space-x-3 p-3 bg-slate-950/80 rounded-xl border border-slate-800">

@@ -8,7 +8,7 @@ import { RealEstateProject, Transaction, UserAccount, SecurityLog, ProjectCatego
 import { 
   Shield, Users, Landmark, Coins, FileText, Check, X, ShieldAlert,
   ArrowDownCircle, ArrowUpCircle, Plus, Eye, RefreshCw, Key, AlertOctagon, BarChart2,
-  Unlock, Minus, Wallet, User, Lock, Mail, MessageSquare, CheckCircle
+  Unlock, Minus, Wallet, User, Lock, Mail, MessageSquare, CheckCircle, XCircle, Download
 } from 'lucide-react';
 
 interface AdminPanelProps {
@@ -233,6 +233,7 @@ export default function AdminPanel({
   const [adjustAmount, setAdjustAmount] = useState<number>(50);
   const [zoomedKycUrl, setZoomedKycUrl] = useState<string | null>(null);
   const [zoomedKycName, setZoomedKycName] = useState<string>('');
+  const [selectedProofTx, setSelectedProofTx] = useState<Transaction | null>(null);
 
   // Preset listing images
   const PRESET_PROPERTY_IMAGES = [
@@ -635,15 +636,35 @@ export default function AdminPanel({
                       </span>
                     </div>
 
-                    {/* Mock payment proof indicator */}
-                    <div className="flex items-center space-x-2 font-mono text-[9px] text-slate-400 bg-slate-950/60 p-2 rounded-lg border border-slate-850">
-                      <FileText className="w-4 h-4 text-amber-500 shrink-0" />
-                      <span>Verified receipt metadata proof: <strong>{tx.proofImage}</strong></span>
+                    {/* Deposit payment proof screenshot viewer card */}
+                    <div className="flex items-center justify-between p-2.5 bg-slate-950/80 rounded-xl border border-slate-850 gap-3">
+                      <div className="flex items-center space-x-2.5 min-w-0">
+                        {tx.proofImage && (tx.proofImage.startsWith('data:image') || tx.proofImage.startsWith('http') || tx.proofImage.startsWith('blob:')) ? (
+                          <img 
+                            src={tx.proofImage} 
+                            alt="Deposit Proof Thumbnail" 
+                            className="w-12 h-12 object-cover rounded-lg border border-amber-500/30 cursor-pointer hover:scale-105 transition-all shrink-0 shadow-md"
+                            onClick={() => setSelectedProofTx(tx)}
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0">
+                            <FileText className="w-5 h-5 text-amber-500 shrink-0" />
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <span className="text-[9px] text-slate-400 font-mono block font-bold">Attached Deposit Proof</span>
+                          <span className="text-[9.5px] text-slate-200 font-mono truncate block font-medium">
+                            {tx.proofImage && (tx.proofImage.startsWith('data:image') || tx.proofImage.startsWith('http')) ? '📷 Payment Screenshot Attached' : (tx.proofImage || 'screenshot.png')}
+                          </span>
+                        </div>
+                      </div>
                       <button 
-                        onClick={() => alert("Verification HUD: Simulating payment screenshot preview. Blockchain status indicates transaction complete.")}
-                        className="text-amber-400 hover:underline uppercase font-bold shrink-0 ml-auto"
+                        type="button"
+                        onClick={() => setSelectedProofTx(tx)}
+                        className="px-3 py-1.5 bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 border border-amber-500/30 rounded-lg text-[9.5px] font-bold uppercase tracking-wider shrink-0 transition-all cursor-pointer flex items-center gap-1.5"
                       >
-                        [View Proof]
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>View Screenshot</span>
                       </button>
                     </div>
 
@@ -1468,524 +1489,703 @@ export default function AdminPanel({
         )}
 
         {/* ==================== TAB 5: USERS DIRECTORY ==================== */}
-        {adminTab === 'users' && (
-          <div className="space-y-2">
-            <span className="text-[9px] font-mono font-bold tracking-wider uppercase text-slate-500 block">👥 User Accounts Ledger & Balance Checks</span>
+        {adminTab === 'users' && (() => {
+          const renderUserAdminConsole = (usr: UserAccount) => (
+            <div className="bg-slate-950 border border-slate-850 rounded-2xl p-3 sm:p-5 space-y-4 shadow-2xl max-w-full overflow-hidden">
+              {/* Header */}
+              <div className="flex items-center justify-between pb-2.5 border-b border-slate-850">
+                <div className="flex items-center space-x-2 min-w-0">
+                  <Key className="w-4 h-4 text-amber-500 shrink-0" />
+                  <div className="min-w-0">
+                    <span className="text-xs font-bold text-white block truncate">Administrative Console: {usr.email}</span>
+                    <span className="text-[10px] text-slate-400 block truncate">Perform direct balance corrections, KYC audits, and credential bindings</span>
+                  </div>
+                </div>
+                <button 
+                  type="button"
+                  onClick={() => setExpandedUserId(null)} 
+                  className="text-slate-500 hover:text-slate-300 text-xs font-bold cursor-pointer px-2 py-1 bg-slate-900 rounded-lg border border-slate-800 shrink-0"
+                >
+                  ✕
+                </button>
+              </div>
 
-            <div className="w-full overflow-x-auto bg-slate-900 border border-slate-800 rounded-2xl font-mono text-[10px]">
-              <table className="w-full text-left border-collapse min-w-[1200px]">
-                <thead>
-                  <tr className="bg-slate-950 text-slate-400 border-b border-slate-850 uppercase text-[8px] font-bold text-center animate-none whitespace-nowrap">
-                    <th className="p-3 text-left">Account Email</th>
-                    <th className="p-3 text-left">Investor Name</th>
-                    <th className="p-3">KYC Status</th>
-                    <th className="p-3">Active Balance</th>
-                    <th className="p-3">Total Deposited</th>
-                    <th className="p-3">Total Withdrawn</th>
-                    <th className="p-3">Total Invested</th>
-                    <th className="p-3">Total Profits</th>
-                    <th className="p-3">Referral Code</th>
-                    <th className="p-3">Referred By</th>
-                    <th className="p-3">Registration Date</th>
-                    <th className="p-3">Action Desk</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-850 text-slate-350 text-center">
-                  {usersList.map((usr) => [
-                    <tr key={usr.id} className="hover:bg-slate-850/20 whitespace-nowrap text-[10px]">
-                      <td className="p-3 text-left text-white font-semibold">
-                        <div className="flex flex-col">
-                          <span>{usr.email}</span>
-                          <span className="text-[8px] text-slate-500 font-mono">ID: {usr.id}</span>
-                        </div>
-                      </td>
-                      <td className="p-3 text-left text-slate-400 font-sans">{usr.name || 'N/A'}</td>
-                      <td className="p-3">
-                        <span className={`px-2 py-0.5 rounded text-[8px] uppercase tracking-wider font-sans font-bold ${
+              {/* Content columns */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+                
+                {/* COLUMN 1: USER PROFILE & KYC DETAILS */}
+                <div className="space-y-3.5">
+                  <div className="flex items-center space-x-1.5 text-[11px] font-bold text-slate-300 uppercase tracking-wider font-mono">
+                    <User className="w-4 h-4 text-emerald-400" />
+                    <span>User Profile & KYC Identity</span>
+                  </div>
+
+                  <div className="p-3 sm:p-4 bg-slate-900 border border-slate-850 rounded-xl space-y-3 font-sans text-xs text-slate-300 max-w-full overflow-hidden">
+                    <div className="grid grid-cols-2 gap-2 pb-2.5 border-b border-slate-850">
+                      <div>
+                        <span className="text-[9px] uppercase font-mono text-slate-500 block">Registration Date</span>
+                        <span className="font-semibold text-white font-mono text-[11px]">{usr.registrationDate ? usr.registrationDate.replace('T', ' ').substring(0, 19) : 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] uppercase font-mono text-slate-500 block">Email Verified</span>
+                        <span className={`inline-flex items-center gap-1 font-bold ${usr.isEmailVerified ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {usr.isEmailVerified ? '✓ Verified' : '✗ Unverified'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* KYC Verification Details Card */}
+                    <div className="space-y-2 pb-2.5 border-b border-slate-850">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-[9px] uppercase font-mono font-bold text-slate-400">KYC Verification Details</span>
+                        <span className={`px-2 py-0.5 rounded text-[8px] uppercase tracking-wider font-mono font-bold ${
                           usr.kycStatus === 'Verified' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/25' :
                           usr.kycStatus === 'Under Review' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/25' :
+                          usr.kycStatus === 'Rejected' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/25' :
                           'bg-slate-800 text-slate-400 border border-slate-700'
                         }`}>
                           {usr.kycStatus || 'Unverified'}
                         </span>
-                      </td>
-                      <td className="p-3 font-bold text-amber-300 font-mono">${(usr.balance || 0).toFixed(2)}</td>
-                      <td className="p-3 text-emerald-400 font-mono font-semibold">${(usr.totalDeposited || 0).toFixed(2)}</td>
-                      <td className="p-3 text-rose-400 font-mono font-semibold">${(usr.totalWithdrawn || 0).toFixed(2)}</td>
-                      <td className="p-3 text-slate-200 font-mono font-semibold">${(usr.totalInvestment || 0).toFixed(2)}</td>
-                      <td className="p-3 text-emerald-300 font-mono font-semibold">${(usr.totalProfitEarned || 0).toFixed(2)}</td>
-                      <td className="p-3 text-amber-400 text-xs font-bold font-mono uppercase tracking-wider">{usr.referralCode}</td>
-                      <td className="p-3 text-slate-500 font-mono">{usr.referredBy || 'None'}</td>
-                      <td className="p-3 text-slate-400 font-mono text-[9px]">{usr.registrationDate ? usr.registrationDate.split('T')[0] : 'N/A'}</td>
-                      <td className="p-3">
-                        <button
-                          id={`manage-user-btn-${usr.id}`}
-                          onClick={() => {
-                            if (expandedUserId === usr.id) {
-                              setExpandedUserId(null);
-                            } else {
-                              setExpandedUserId(usr.id);
-                              setAdjustAmount(50);
-                            }
-                          }}
-                          className={`px-2.5 py-1 text-[9px] font-bold uppercase font-mono tracking-wider rounded-lg border transition-all ${
-                            expandedUserId === usr.id 
-                              ? 'bg-amber-500/10 border-amber-500/40 text-amber-400' 
-                              : 'bg-slate-950 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
-                          }`}
-                        >
-                          {expandedUserId === usr.id ? 'Close' : '🔧 Manage'}
-                        </button>
-                      </td>
-                    </tr>,
-                    expandedUserId === usr.id && (
-                      <tr key={`expansion-${usr.id}`} className="bg-slate-950/80 font-sans text-xs">
-                        <td colSpan={12} className="p-4 text-left border-t border-b border-slate-800">
-                          <div className="bg-slate-950 border border-slate-850 rounded-xl p-4 space-y-4 shadow-inner">
-                            
-                            {/* Header */}
-                            <div className="flex items-center justify-between pb-2 border-b border-slate-850">
-                              <div className="flex items-center space-x-2">
-                                <Key className="w-4 h-4 text-amber-500" />
-                                <div>
-                                  <span className="text-xs font-bold text-white block">Administrative Console: {usr.email}</span>
-                                  <span className="text-[10px] text-slate-400">Perform direct balance corrections and credential bindings</span>
-                                </div>
-                              </div>
-                              <button 
-                                onClick={() => setExpandedUserId(null)} 
-                                className="text-slate-500 hover:text-slate-300 text-xs font-bold"
-                              >
-                                ✕
-                              </button>
-                            </div>
+                      </div>
 
-                            {/* Content columns */}
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                              
-                              {/* COLUMN 1: USER COMPLETE PROFILE */}
-                              <div className="space-y-3.5">
-                                <div className="flex items-center space-x-1.5 text-[11px] font-bold text-slate-300 uppercase tracking-wider font-mono">
-                                  <User className="w-4 h-4 text-emerald-400" />
-                                  <span>User Complete Profile</span>
-                                </div>
+                      <div className="bg-slate-950/70 p-3 rounded-xl border border-slate-850 space-y-2 text-xs">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                          <div className="flex justify-between sm:flex-col sm:justify-start">
+                            <span className="text-slate-500 font-mono text-[10px]">Full Name:</span>
+                            <span className="text-white font-semibold break-all">{usr.kycFullName || usr.name || 'Not provided'}</span>
+                          </div>
+                          <div className="flex justify-between sm:flex-col sm:justify-start">
+                            <span className="text-slate-500 font-mono text-[10px]">Country:</span>
+                            <span className="text-white font-medium break-all">{usr.kycCountry || 'Not provided'}</span>
+                          </div>
+                          <div className="flex justify-between sm:flex-col sm:justify-start">
+                            <span className="text-slate-500 font-mono text-[10px]">Doc Type:</span>
+                            <span className="text-white font-medium">{usr.kycDocumentType || 'Not provided'}</span>
+                          </div>
+                          <div className="flex justify-between sm:flex-col sm:justify-start">
+                            <span className="text-slate-500 font-mono text-[10px]">KYC Status:</span>
+                            <span className={`font-bold ${
+                              usr.kycStatus === 'Verified' ? 'text-emerald-400' :
+                              usr.kycStatus === 'Under Review' ? 'text-amber-400' :
+                              usr.kycStatus === 'Rejected' ? 'text-rose-400' : 'text-slate-400'
+                            }`}>{usr.kycStatus || 'Unverified'}</span>
+                          </div>
+                        </div>
 
-                                <div className="p-4 bg-slate-900 border border-slate-850 rounded-lg space-y-3 font-sans text-xs text-slate-300">
-                                  <div className="grid grid-cols-2 gap-2 pb-2.5 border-b border-slate-850">
-                                    <div>
-                                      <span className="text-[9px] uppercase font-mono text-slate-500 block">Registration Date</span>
-                                      <span className="font-semibold text-white font-mono">{usr.registrationDate ? usr.registrationDate.replace('T', ' ').substring(0, 19) : 'N/A'}</span>
+                        {/* Attachment viewer inside the details box */}
+                        <div className="pt-2 border-t border-slate-900">
+                          <span className="text-[10px] uppercase font-mono text-slate-400 font-bold block mb-1.5">
+                            📷 Uploaded Document Attachment(s):
+                          </span>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {/* Front Side / Main Document */}
+                            <div className="space-y-1">
+                              {usr.kycDocumentUrlBack && (
+                                <span className="text-[10px] font-mono text-indigo-400 font-bold block">
+                                  Front Side:
+                                </span>
+                              )}
+                              {usr.kycDocumentUrl ? (
+                                usr.kycDocumentUrl.startsWith('data:image/') || usr.kycDocumentUrl.startsWith('http') || usr.kycDocumentUrl.startsWith('blob:') ? (
+                                  <div className="space-y-2">
+                                    <div className="relative group overflow-hidden rounded-xl border border-slate-800 bg-slate-950 p-1.5 flex flex-col items-center justify-center max-w-full">
+                                      <img 
+                                        src={usr.kycDocumentUrl} 
+                                        alt="KYC Document Scan Front" 
+                                        className="max-h-36 max-w-full rounded-lg object-contain border border-slate-850 shadow-md cursor-pointer"
+                                        onClick={() => {
+                                          setZoomedKycUrl(usr.kycDocumentUrl || null);
+                                          setZoomedKycName((usr.kycFullName || usr.name || 'KYC Document') + ' (Front)');
+                                        }}
+                                      />
+                                      <div className="flex flex-wrap items-center justify-center gap-2 pt-2 w-full">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setZoomedKycUrl(usr.kycDocumentUrl || null);
+                                            setZoomedKycName((usr.kycFullName || usr.name || 'KYC Document') + ' (Front)');
+                                          }}
+                                          className="px-3 py-1 bg-indigo-600/20 hover:bg-indigo-600/40 border border-indigo-500/30 text-indigo-300 rounded-lg font-mono text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1"
+                                        >
+                                          <Eye className="w-3.5 h-3.5" />
+                                          <span>Zoom Scan</span>
+                                        </button>
+                                        <a 
+                                          href={usr.kycDocumentUrl} 
+                                          download={usr.kycDocumentFileName || `kyc_front_${usr.email}.jpg`}
+                                          className="px-3 py-1 bg-emerald-600/20 hover:bg-emerald-600/40 border border-emerald-500/30 text-emerald-300 rounded-lg font-mono text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1"
+                                        >
+                                          <Download className="w-3.5 h-3.5" />
+                                          <span>Download File</span>
+                                        </a>
+                                      </div>
                                     </div>
-                                    <div>
-                                      <span className="text-[9px] uppercase font-mono text-slate-500 block">Email Verified</span>
-                                      <span className={`inline-flex items-center gap-1 font-bold ${usr.isEmailVerified ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                        {usr.isEmailVerified ? '✓ Verified' : '✗ Unverified'}
+                                    <div className="text-[10px] font-mono text-slate-400 truncate px-1" title={usr.kycDocumentFileName || "Attached image"}>
+                                      📄 File: <strong className="text-slate-200">{usr.kycDocumentFileName || "Front Identity Image"}</strong>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-850 flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <FileText className="w-5 h-5 text-amber-500 shrink-0" />
+                                      <span className="text-[11px] text-slate-200 font-mono truncate" title={usr.kycDocumentFileName || "Attached Document"}>
+                                        {usr.kycDocumentFileName || "Attached Document"}
                                       </span>
                                     </div>
-                                  </div>
-
-                                  <div className="space-y-1.5 pb-2.5 border-b border-slate-850">
-                                    <span className="text-[9px] uppercase font-mono text-slate-500 block">KYC Verification Details</span>
-                                    <div className="bg-slate-950/40 p-2.5 rounded border border-slate-850 space-y-1.5 text-[11px]">
-                                      <div className="flex justify-between">
-                                        <span className="text-slate-500">Full Name:</span>
-                                        <span className="text-white font-semibold">{usr.kycFullName || usr.name || 'Not provided'}</span>
-                                      </div>
-                                      <div className="flex justify-between">
-                                        <span className="text-slate-500">Country:</span>
-                                        <span className="text-white">{usr.kycCountry || 'Not provided'}</span>
-                                      </div>
-                                      <div className="flex justify-between">
-                                        <span className="text-slate-500">Doc Type:</span>
-                                        <span className="text-white">{usr.kycDocumentType || 'Not provided'}</span>
-                                      </div>
-                                      <div className="flex justify-between pb-1.5 border-b border-slate-900/60">
-                                        <span className="text-slate-500">KYC Status:</span>
-                                        <span className={`font-bold ${
-                                          usr.kycStatus === 'Verified' ? 'text-emerald-400' :
-                                          usr.kycStatus === 'Under Review' ? 'text-amber-400' : 'text-slate-400'
-                                        }`}>{usr.kycStatus || 'Unverified'}</span>
-                                      </div>
-
-                                      {/* Attachment viewer inside the details box */}
-                                      <div className="pt-1.5">
-                                        <span className="text-[9px] uppercase font-mono text-slate-500 block mb-1">Uploaded Attachment:</span>
-                                        {usr.kycDocumentUrl ? (
-                                          usr.kycDocumentUrl.startsWith('data:image/') ? (
-                                            <div className="space-y-1.5">
-                                              <div className="relative group overflow-hidden rounded-lg border border-slate-800 bg-slate-950 p-1 flex items-center justify-center">
-                                                <img 
-                                                  src={usr.kycDocumentUrl} 
-                                                  alt="KYC Document Preview" 
-                                                  className="max-h-[140px] max-w-full rounded object-contain transition-transform group-hover:scale-[1.03]" 
-                                                />
-                                                <div className="absolute inset-0 bg-slate-950/80 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-1.5 transition-opacity duration-200">
-                                                  <button
-                                                    onClick={() => {
-                                                      setZoomedKycUrl(usr.kycDocumentUrl || null);
-                                                      setZoomedKycName(usr.kycFullName || usr.name || 'KYC Document');
-                                                    }}
-                                                    className="px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded font-mono text-[9px] font-bold shadow transition-colors cursor-pointer"
-                                                  >
-                                                    🔍 View Zoomed
-                                                  </button>
-                                                  <a 
-                                                    href={usr.kycDocumentUrl} 
-                                                    download={usr.kycDocumentFileName || "kyc-document"}
-                                                    className="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-slate-950 rounded font-mono text-[9px] font-bold shadow transition-colors cursor-pointer"
-                                                  >
-                                                    📥 Download
-                                                  </a>
-                                                </div>
-                                              </div>
-                                              <div className="flex justify-between items-center text-[9px] font-mono text-slate-400 px-1">
-                                                <span className="truncate max-w-[120px]" title={usr.kycDocumentFileName || "Attached image"}>
-                                                  📄 {usr.kycDocumentFileName || "Attached Image"}
-                                                </span>
-                                                <button
-                                                  onClick={() => {
-                                                    setZoomedKycUrl(usr.kycDocumentUrl || null);
-                                                    setZoomedKycName(usr.kycFullName || usr.name || 'KYC Document');
-                                                  }}
-                                                  className="text-indigo-400 hover:underline cursor-pointer"
-                                                >
-                                                  Zoom Image
-                                                </button>
-                                              </div>
-                                            </div>
-                                          ) : (
-                                            <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-850 flex items-center justify-between">
-                                              <div className="flex items-center gap-1.5 min-w-0">
-                                                <FileText className="w-4 h-4 text-amber-500 shrink-0" />
-                                                <div className="truncate">
-                                                  <span className="text-[10px] text-slate-300 block truncate font-mono" title={usr.kycDocumentFileName || "Attached Document"}>
-                                                    {usr.kycDocumentFileName || "Attached Document"}
-                                                  </span>
-                                                </div>
-                                              </div>
-                                              <a 
-                                                href={usr.kycDocumentUrl} 
-                                                download={usr.kycDocumentFileName || "kyc-document"}
-                                                className="px-2 py-0.5 bg-amber-500/10 hover:bg-amber-500/25 text-amber-400 rounded border border-amber-500/30 hover:border-amber-500/50 font-mono text-[9px] font-bold shrink-0 transition-all cursor-pointer"
-                                              >
-                                                Download
-                                              </a>
-                                            </div>
-                                          )
-                                        ) : (
-                                          <div className="py-2.5 text-center bg-slate-950/40 rounded-lg border border-slate-900 border-dashed">
-                                            <span className="text-[10px] font-sans text-slate-400 italic">No document file attached</span>
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-
-                                    {/* KYC Direct Actions */}
-                                    <div className="flex gap-2 pt-1">
-                                      <button
-                                        onClick={() => {
-                                          if (onUpdateUser) {
-                                            onUpdateUser(usr.id, { kycStatus: 'Verified' });
-                                            alert(`KYC Status updated to Verified for ${usr.email}`);
-                                          }
-                                        }}
-                                        className="flex-1 py-1 bg-emerald-500/10 hover:bg-emerald-500/25 border border-emerald-500/30 hover:border-emerald-500/50 text-emerald-400 hover:text-emerald-300 text-[10px] font-bold uppercase rounded cursor-pointer transition-all text-center"
-                                      >
-                                        Approve KYC
-                                      </button>
-                                      <button
-                                        onClick={() => {
-                                          if (onUpdateUser) {
-                                            onUpdateUser(usr.id, { kycStatus: 'Unverified' });
-                                            alert(`KYC Status updated to Unverified for ${usr.email}`);
-                                          }
-                                        }}
-                                        className="flex-1 py-1 bg-rose-500/10 hover:bg-rose-500/25 border border-rose-500/30 hover:border-rose-500/50 text-rose-400 hover:text-rose-300 text-[10px] font-bold uppercase rounded cursor-pointer transition-all text-center"
-                                      >
-                                        Decline
-                                      </button>
-                                    </div>
-
-                                    {/* Email Verification Action */}
-                                    <div className="pt-1.5">
-                                      <button
-                                        onClick={() => {
-                                          if (onUpdateUser) {
-                                            const nextVal = !usr.isEmailVerified;
-                                            onUpdateUser(usr.id, { isEmailVerified: nextVal });
-                                            alert(`Email verification state toggled to: ${nextVal ? 'VERIFIED' : 'UNVERIFIED'}`);
-                                          }
-                                        }}
-                                        className="w-full py-1 bg-slate-800 hover:bg-slate-750 text-slate-200 text-[10px] font-bold uppercase tracking-wider rounded transition-all cursor-pointer"
-                                      >
-                                        Toggle Email Verification
-                                      </button>
-                                    </div>
-                                  </div>
-
-                                  {/* Password Display & Reset */}
-                                  <div className="space-y-1.5 pb-2.5 border-b border-slate-850">
-                                    <span className="text-[9px] uppercase font-mono text-slate-500 block">Account Password (Admin Visibility)</span>
-                                    <div className="flex gap-2">
-                                      <input
-                                        type="text"
-                                        id={`pwd-admin-input-${usr.id}`}
-                                        defaultValue={usr.password || 'no-password-stored'}
-                                        className="flex-1 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-white font-mono text-xs focus:outline-none focus:border-indigo-500"
-                                      />
-                                      <button
-                                        onClick={() => {
-                                          const inputElem = document.getElementById(`pwd-admin-input-${usr.id}`) as HTMLInputElement;
-                                          if (inputElem && onUpdateUser) {
-                                            onUpdateUser(usr.id, { password: inputElem.value });
-                                            alert(`Successfully reset password for user ${usr.email} to: ${inputElem.value}`);
-                                          }
-                                        }}
-                                        className="px-2.5 py-1 bg-indigo-500/15 hover:bg-indigo-500/30 border border-indigo-500/30 text-indigo-400 text-[10px] font-bold uppercase rounded cursor-pointer transition-all"
-                                      >
-                                        Reset
-                                      </button>
-                                    </div>
-                                  </div>
-
-                                  <div className="grid grid-cols-2 gap-2 text-[11px]">
-                                    <div>
-                                      <span className="text-[9px] uppercase font-mono text-slate-500 block">Referral Code</span>
-                                      <span className="font-mono font-bold text-amber-400 uppercase">{usr.referralCode}</span>
-                                    </div>
-                                    <div>
-                                      <span className="text-[9px] uppercase font-mono text-slate-500 block">Referred By</span>
-                                      <span className="font-mono font-bold text-indigo-400">{usr.referredBy || 'None'}</span>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* COLUMN 2: WALLET GATEWAYS & REFERRAL LIST */}
-                              <div className="space-y-3.5">
-                                <div className="flex items-center space-x-1.5 text-[11px] font-bold text-slate-300 uppercase tracking-wider font-mono">
-                                  <Wallet className="w-4 h-4 text-indigo-400" />
-                                  <span>Bound Reception Gateways & Network</span>
-                                </div>
-
-                                <div className="space-y-2.5">
-                                  
-                                  {/* TRC20 Wallet */}
-                                  <div className="p-3 bg-slate-900 border border-slate-850 rounded-lg space-y-1.5">
-                                    <div className="flex justify-between items-center">
-                                      <span className="text-[9px] uppercase font-mono font-bold text-slate-400 block">USDT (TRC20 Network)</span>
-                                      {usr.wallet.usdtTrc20Address && (
-                                        <button
-                                          id={`unbind-trc-${usr.id}`}
-                                          onClick={() => {
-                                            if (onUnbindUserWallet) {
-                                              onUnbindUserWallet(usr.id, 'TRC20');
-                                              alert(`Successfully unbound TRC20 wallet address for user ${usr.email}`);
-                                            }
-                                          }}
-                                          className="text-red-400 hover:text-red-300 text-[9px] font-bold uppercase tracking-wider cursor-pointer"
-                                        >
-                                          🔓 Unbind TRC20
-                                        </button>
-                                      )}
-                                    </div>
-                                    <div className="flex gap-2">
-                                      <input
-                                        type="text"
-                                        id={`trc20-admin-input-${usr.id}`}
-                                        defaultValue={usr.wallet.usdtTrc20Address || ''}
-                                        className="flex-1 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-white font-mono text-[10px] focus:outline-none"
-                                        placeholder="Manually bind TRC20 (starts with T)"
-                                      />
-                                      <button
-                                        onClick={() => {
-                                          const inputVal = (document.getElementById(`trc20-admin-input-${usr.id}`) as HTMLInputElement)?.value?.trim();
-                                          if (onUpdateUser) {
-                                            onUpdateUser(usr.id, {
-                                              wallet: {
-                                                ...usr.wallet,
-                                                usdtTrc20Address: inputVal,
-                                                isVerified: !!inputVal
-                                              }
-                                            });
-                                            alert(`TRC20 Wallet address updated for ${usr.email}`);
-                                          }
-                                        }}
-                                        className="px-2 py-1 bg-indigo-500 text-white text-[10px] uppercase font-bold rounded cursor-pointer"
-                                      >
-                                        Save
-                                      </button>
-                                    </div>
-                                  </div>
-
-                                  {/* BEP20 Wallet */}
-                                  <div className="p-3 bg-slate-900 border border-slate-850 rounded-lg space-y-1.5">
-                                    <div className="flex justify-between items-center">
-                                      <span className="text-[9px] uppercase font-mono font-bold text-slate-400 block">USDT (BEP20 Network)</span>
-                                      {usr.wallet.usdtBep20Address && (
-                                        <button
-                                          id={`unbind-bep-${usr.id}`}
-                                          onClick={() => {
-                                            if (onUnbindUserWallet) {
-                                              onUnbindUserWallet(usr.id, 'BEP20');
-                                              alert(`Successfully unbound BEP20 wallet address for user ${usr.email}`);
-                                            }
-                                          }}
-                                          className="text-red-400 hover:text-red-300 text-[9px] font-bold uppercase tracking-wider cursor-pointer"
-                                        >
-                                          🔓 Unbind BEP20
-                                        </button>
-                                      )}
-                                    </div>
-                                    <div className="flex gap-2">
-                                      <input
-                                        type="text"
-                                        id={`bep20-admin-input-${usr.id}`}
-                                        defaultValue={usr.wallet.usdtBep20Address || ''}
-                                        className="flex-1 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-white font-mono text-[10px] focus:outline-none"
-                                        placeholder="Manually bind BEP20 (starts with 0x)"
-                                      />
-                                      <button
-                                        onClick={() => {
-                                          const inputVal = (document.getElementById(`bep20-admin-input-${usr.id}`) as HTMLInputElement)?.value?.trim();
-                                          if (onUpdateUser) {
-                                            onUpdateUser(usr.id, {
-                                              wallet: {
-                                                ...usr.wallet,
-                                                usdtBep20Address: inputVal,
-                                                isVerified: !!inputVal
-                                              }
-                                            });
-                                            alert(`BEP20 Wallet address updated for ${usr.email}`);
-                                          }
-                                        }}
-                                        className="px-2 py-1 bg-indigo-500 text-white text-[10px] uppercase font-bold rounded cursor-pointer"
-                                      >
-                                        Save
-                                      </button>
-                                    </div>
-                                  </div>
-
-                                  {/* Direct Referrals List */}
-                                  {(() => {
-                                    const userRefs = usersList.filter(u => u.referredBy?.trim().toUpperCase() === usr.referralCode?.trim().toUpperCase());
-                                    return (
-                                      <div className="p-3 bg-slate-900 border border-slate-850 rounded-lg space-y-2">
-                                        <span className="text-[9px] uppercase font-mono font-bold text-slate-400 block">Direct Referrals Hierarchy ({userRefs.length})</span>
-                                        {userRefs.length === 0 ? (
-                                          <span className="text-slate-500 italic text-[11px] block">No active referrals found under this sponsor.</span>
-                                        ) : (
-                                          <div className="max-h-[110px] overflow-y-auto space-y-1 font-mono text-[10px]">
-                                            {userRefs.map(ref => (
-                                              <div key={ref.id} className="flex justify-between items-center p-1.5 bg-slate-950/60 rounded border border-slate-850">
-                                                <span className="text-slate-300 font-semibold">{ref.name}</span>
-                                                <span className="text-slate-500 text-[9px]">{ref.email}</span>
-                                              </div>
-                                            ))}
-                                          </div>
-                                        )}
-                                      </div>
-                                    );
-                                  })()}
-
-                                </div>
-                              </div>
-
-                              {/* COLUMN 3: BALANCE ADJUSTMENT */}
-                              <div className="space-y-3.5">
-                                <div className="flex items-center space-x-1.5 text-[11px] font-bold text-slate-300 uppercase tracking-wider font-mono">
-                                  <Coins className="w-4 h-4 text-emerald-400" />
-                                  <span>Direct Funds Desk (Add / Deduct)</span>
-                                </div>
-
-                                <div className="p-4 bg-slate-900 border border-slate-850 rounded-lg space-y-4">
-                                  {/* Current Balance Hud */}
-                                  <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800 flex justify-between items-center">
-                                    <span className="text-[10px] text-slate-400 uppercase font-bold">Current Available Balance:</span>
-                                    <span className="text-sm font-black text-amber-300 font-mono">${(usr.balance || 0).toFixed(2)} USDT</span>
-                                  </div>
-
-                                  <div className="space-y-1.5">
-                                    <span className="text-[10px] text-slate-400 font-bold uppercase font-mono block">Amount to Add or Deduct (USDT)</span>
-                                    <div className="relative">
-                                      <span className="absolute left-3 top-2.5 text-slate-400 font-bold">$</span>
-                                      <input
-                                        type="number"
-                                        min="1"
-                                        value={adjustAmount}
-                                        onChange={(e) => setAdjustAmount(Math.max(1, Number(e.target.value)))}
-                                        className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-6 pr-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-emerald-500"
-                                        placeholder="e.g. 50"
-                                      />
-                                    </div>
-                                  </div>
-
-                                  <div className="flex gap-3">
-                                    <button
-                                      id={`adjust-add-btn-${usr.id}`}
-                                      onClick={() => {
-                                        if (onAdjustUserFunds) {
-                                          onAdjustUserFunds(usr.id, adjustAmount, 'add');
-                                          alert(`Successfully added $${adjustAmount.toFixed(2)} USDT to user ${usr.email}'s balance!`);
-                                        }
-                                      }}
-                                      className="flex-1 py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black uppercase rounded-lg text-[10px] tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-md cursor-pointer"
+                                    <a 
+                                      href={usr.kycDocumentUrl} 
+                                      download={usr.kycDocumentFileName || "kyc-document"}
+                                      className="px-3 py-1 bg-amber-500/15 hover:bg-amber-500/30 text-amber-400 rounded-lg border border-amber-500/30 font-mono text-[10px] font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1"
                                     >
-                                      <Plus className="w-4 h-4" />
-                                      <span>+ Add ${adjustAmount}</span>
-                                    </button>
-
-                                    <button
-                                      id={`adjust-deduct-btn-${usr.id}`}
-                                      onClick={() => {
-                                        if (onAdjustUserFunds) {
-                                          onAdjustUserFunds(usr.id, adjustAmount, 'deduct');
-                                          alert(`Successfully deducted $${adjustAmount.toFixed(2)} USDT from user ${usr.email}'s balance!`);
-                                        }
-                                      }}
-                                      className="flex-1 py-3 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 hover:border-rose-500/50 text-rose-400 hover:text-rose-350 font-black uppercase rounded-lg text-[10px] tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-                                    >
-                                      <Minus className="w-4 h-4" />
-                                      <span>- Deduct ${adjustAmount}</span>
-                                    </button>
+                                      <Download className="w-3.5 h-3.5" />
+                                      <span>Download</span>
+                                    </a>
                                   </div>
-
-                                  <span className="text-[9px] text-slate-500 italic block leading-snug">
-                                    * Note: Funds transactions are processed instantaneously and added to system ledgers.
-                                  </span>
-
-                                  {onDeleteUser && usr.role !== 'admin' && (
-                                    <button
-                                      id={`delete-user-btn-${usr.id}`}
-                                      onClick={() => {
-                                        const confirmDel = window.confirm(`Are you sure you want to PERMANENTLY delete user account ${usr.email} (${usr.id}) from the database? This action cannot be undone.`);
-                                        if (confirmDel) {
-                                          onDeleteUser(usr.id);
-                                          alert(`User account ${usr.email} has been permanently deleted from Firebase database.`);
-                                        }
-                                      }}
-                                      className="w-full py-2 bg-red-600/20 hover:bg-red-600/40 border border-red-500/40 text-red-300 font-bold uppercase rounded-lg text-[10px] tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer mt-3"
-                                    >
-                                      <AlertOctagon className="w-3.5 h-3.5 text-red-400" />
-                                      <span>Permanently Delete User Account</span>
-                                    </button>
-                                  )}
+                                )
+                              ) : (
+                                <div className="py-3 text-center bg-slate-950/60 rounded-xl border border-slate-850 border-dashed">
+                                  <span className="text-[11px] font-sans text-slate-400 italic">No identity document attached yet</span>
                                 </div>
-
-                              </div>
-
+                              )}
                             </div>
 
+                            {/* Back Side Document if available */}
+                            {usr.kycDocumentUrlBack && (
+                              <div className="space-y-1">
+                                <span className="text-[10px] font-mono text-indigo-400 font-bold block">
+                                  Back Side:
+                                </span>
+                                {usr.kycDocumentUrlBack.startsWith('data:image/') || usr.kycDocumentUrlBack.startsWith('http') || usr.kycDocumentUrlBack.startsWith('blob:') ? (
+                                  <div className="space-y-2">
+                                    <div className="relative group overflow-hidden rounded-xl border border-slate-800 bg-slate-950 p-1.5 flex flex-col items-center justify-center max-w-full">
+                                      <img 
+                                        src={usr.kycDocumentUrlBack} 
+                                        alt="KYC Document Scan Back" 
+                                        className="max-h-36 max-w-full rounded-lg object-contain border border-slate-850 shadow-md cursor-pointer"
+                                        onClick={() => {
+                                          setZoomedKycUrl(usr.kycDocumentUrlBack || null);
+                                          setZoomedKycName((usr.kycFullName || usr.name || 'KYC Document') + ' (Back)');
+                                        }}
+                                      />
+                                      <div className="flex flex-wrap items-center justify-center gap-2 pt-2 w-full">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setZoomedKycUrl(usr.kycDocumentUrlBack || null);
+                                            setZoomedKycName((usr.kycFullName || usr.name || 'KYC Document') + ' (Back)');
+                                          }}
+                                          className="px-3 py-1 bg-indigo-600/20 hover:bg-indigo-600/40 border border-indigo-500/30 text-indigo-300 rounded-lg font-mono text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1"
+                                        >
+                                          <Eye className="w-3.5 h-3.5" />
+                                          <span>Zoom Scan</span>
+                                        </button>
+                                        <a 
+                                          href={usr.kycDocumentUrlBack} 
+                                          download={usr.kycDocumentFileNameBack || `kyc_back_${usr.email}.jpg`}
+                                          className="px-3 py-1 bg-emerald-600/20 hover:bg-emerald-600/40 border border-emerald-500/30 text-emerald-300 rounded-lg font-mono text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1"
+                                        >
+                                          <Download className="w-3.5 h-3.5" />
+                                          <span>Download File</span>
+                                        </a>
+                                      </div>
+                                    </div>
+                                    <div className="text-[10px] font-mono text-slate-400 truncate px-1" title={usr.kycDocumentFileNameBack || "Attached Back Image"}>
+                                      📄 File: <strong className="text-slate-200">{usr.kycDocumentFileNameBack || "Back Identity Image"}</strong>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-850 flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <FileText className="w-5 h-5 text-amber-500 shrink-0" />
+                                      <span className="text-[11px] text-slate-200 font-mono truncate" title={usr.kycDocumentFileNameBack || "Attached Back Document"}>
+                                        {usr.kycDocumentFileNameBack || "Attached Back Document"}
+                                      </span>
+                                    </div>
+                                    <a 
+                                      href={usr.kycDocumentUrlBack} 
+                                      download={usr.kycDocumentFileNameBack || "kyc-document-back"}
+                                      className="px-3 py-1 bg-amber-500/15 hover:bg-amber-500/30 text-amber-400 rounded-lg border border-amber-500/30 font-mono text-[10px] font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1"
+                                    >
+                                      <Download className="w-3.5 h-3.5" />
+                                      <span>Download</span>
+                                    </a>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* KYC Direct Actions */}
+                        <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-slate-900">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (onUpdateUser) {
+                                onUpdateUser(usr.id, { kycStatus: 'Verified' });
+                                alert(`KYC Status updated to Verified for ${usr.email}`);
+                              }
+                            }}
+                            className="flex-1 py-2 bg-emerald-500/15 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-400 hover:text-emerald-300 text-[11px] font-bold uppercase tracking-wider rounded-xl cursor-pointer transition-all text-center flex items-center justify-center gap-1.5"
+                          >
+                            <CheckCircle className="w-4 h-4 text-emerald-400" />
+                            <span>Approve KYC</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (onUpdateUser) {
+                                onUpdateUser(usr.id, { kycStatus: 'Rejected' });
+                                alert(`KYC Status updated to Rejected for ${usr.email}`);
+                              }
+                            }}
+                            className="flex-1 py-2 bg-rose-500/15 hover:bg-rose-500/30 border border-rose-500/40 text-rose-400 hover:text-rose-300 text-[11px] font-bold uppercase tracking-wider rounded-xl cursor-pointer transition-all text-center flex items-center justify-center gap-1.5"
+                          >
+                            <XCircle className="w-4 h-4 text-rose-400" />
+                            <span>Reject / Decline KYC</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Email Verification Action */}
+                    <div className="pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (onUpdateUser) {
+                            const nextVal = !usr.isEmailVerified;
+                            onUpdateUser(usr.id, { isEmailVerified: nextVal });
+                            alert(`Email verification state toggled to: ${nextVal ? 'VERIFIED' : 'UNVERIFIED'}`);
+                          }
+                        }}
+                        className="w-full py-1.5 bg-slate-800 hover:bg-slate-750 text-slate-200 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer"
+                      >
+                        Toggle Email Verification State
+                      </button>
+                    </div>
+
+                    {/* Password Display & Reset */}
+                    <div className="space-y-1.5 pb-2.5 border-b border-slate-850">
+                      <span className="text-[9px] uppercase font-mono text-slate-500 block">Account Password (Admin Visibility)</span>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          id={`pwd-admin-input-${usr.id}`}
+                          defaultValue={usr.password || 'no-password-stored'}
+                          className="flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none focus:border-indigo-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const inputElem = document.getElementById(`pwd-admin-input-${usr.id}`) as HTMLInputElement;
+                            if (inputElem && onUpdateUser) {
+                              onUpdateUser(usr.id, { password: inputElem.value });
+                              alert(`Successfully reset password for user ${usr.email} to: ${inputElem.value}`);
+                            }
+                          }}
+                          className="px-3 py-1.5 bg-indigo-500/15 hover:bg-indigo-500/30 border border-indigo-500/30 text-indigo-400 text-[10px] font-bold uppercase rounded-lg cursor-pointer transition-all shrink-0"
+                        >
+                          Reset
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-[11px]">
+                      <div>
+                        <span className="text-[9px] uppercase font-mono text-slate-500 block">Referral Code</span>
+                        <span className="font-mono font-bold text-amber-400 uppercase">{usr.referralCode}</span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] uppercase font-mono text-slate-500 block">Referred By</span>
+                        <span className="font-mono font-bold text-indigo-400">{usr.referredBy || 'None'}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* COLUMN 2: WALLET GATEWAYS & REFERRAL LIST */}
+                <div className="space-y-3.5">
+                  <div className="flex items-center space-x-1.5 text-[11px] font-bold text-slate-300 uppercase tracking-wider font-mono">
+                    <Wallet className="w-4 h-4 text-indigo-400" />
+                    <span>Bound Reception Gateways & Network</span>
+                  </div>
+
+                  <div className="space-y-2.5">
+                    {/* TRC20 Wallet */}
+                    <div className="p-3 bg-slate-900 border border-slate-850 rounded-xl space-y-1.5">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[9px] uppercase font-mono font-bold text-slate-400 block">USDT (TRC20 Network)</span>
+                        {usr.wallet.usdtTrc20Address && (
+                          <button
+                            id={`unbind-trc-${usr.id}`}
+                            onClick={() => {
+                              if (onUnbindUserWallet) {
+                                onUnbindUserWallet(usr.id, 'TRC20');
+                                alert(`Successfully unbound TRC20 wallet address for user ${usr.email}`);
+                              }
+                            }}
+                            className="text-red-400 hover:text-red-300 text-[9px] font-bold uppercase tracking-wider cursor-pointer"
+                          >
+                            🔓 Unbind TRC20
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          id={`trc20-admin-input-${usr.id}`}
+                          defaultValue={usr.wallet.usdtTrc20Address || ''}
+                          className="flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-white font-mono text-[10px] focus:outline-none"
+                          placeholder="Manually bind TRC20 (starts with T)"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const inputVal = (document.getElementById(`trc20-admin-input-${usr.id}`) as HTMLInputElement)?.value?.trim();
+                            if (onUpdateUser) {
+                              onUpdateUser(usr.id, {
+                                wallet: {
+                                  ...usr.wallet,
+                                  usdtTrc20Address: inputVal,
+                                  isVerified: !!inputVal
+                                }
+                              });
+                              alert(`TRC20 Wallet address updated for ${usr.email}`);
+                            }
+                          }}
+                          className="px-2.5 py-1 bg-indigo-500 text-white text-[10px] uppercase font-bold rounded-lg cursor-pointer shrink-0"
+                        >
+                          Save
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* BEP20 Wallet */}
+                    <div className="p-3 bg-slate-900 border border-slate-850 rounded-xl space-y-1.5">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[9px] uppercase font-mono font-bold text-slate-400 block">USDT (BEP20 Network)</span>
+                        {usr.wallet.usdtBep20Address && (
+                          <button
+                            id={`unbind-bep-${usr.id}`}
+                            onClick={() => {
+                              if (onUnbindUserWallet) {
+                                onUnbindUserWallet(usr.id, 'BEP20');
+                                alert(`Successfully unbound BEP20 wallet address for user ${usr.email}`);
+                              }
+                            }}
+                            className="text-red-400 hover:text-red-300 text-[9px] font-bold uppercase tracking-wider cursor-pointer"
+                          >
+                            🔓 Unbind BEP20
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          id={`bep20-admin-input-${usr.id}`}
+                          defaultValue={usr.wallet.usdtBep20Address || ''}
+                          className="flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-white font-mono text-[10px] focus:outline-none"
+                          placeholder="Manually bind BEP20 (starts with 0x)"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const inputVal = (document.getElementById(`bep20-admin-input-${usr.id}`) as HTMLInputElement)?.value?.trim();
+                            if (onUpdateUser) {
+                              onUpdateUser(usr.id, {
+                                wallet: {
+                                  ...usr.wallet,
+                                  usdtBep20Address: inputVal,
+                                  isVerified: !!inputVal
+                                }
+                              });
+                              alert(`BEP20 Wallet address updated for ${usr.email}`);
+                            }
+                          }}
+                          className="px-2.5 py-1 bg-indigo-500 text-white text-[10px] uppercase font-bold rounded-lg cursor-pointer shrink-0"
+                        >
+                          Save
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Direct Referrals List */}
+                    {(() => {
+                      const userRefs = usersList.filter(u => u.referredBy?.trim().toUpperCase() === usr.referralCode?.trim().toUpperCase());
+                      return (
+                        <div className="p-3 bg-slate-900 border border-slate-850 rounded-xl space-y-2">
+                          <span className="text-[9px] uppercase font-mono font-bold text-slate-400 block">Direct Referrals Hierarchy ({userRefs.length})</span>
+                          {userRefs.length === 0 ? (
+                            <span className="text-slate-500 italic text-[11px] block">No active referrals found under this sponsor.</span>
+                          ) : (
+                            <div className="max-h-[110px] overflow-y-auto space-y-1 font-mono text-[10px]">
+                              {userRefs.map(ref => (
+                                <div key={ref.id} className="flex justify-between items-center p-1.5 bg-slate-950/60 rounded border border-slate-850">
+                                  <span className="text-slate-300 font-semibold">{ref.name}</span>
+                                  <span className="text-slate-500 text-[9px] truncate max-w-[120px]">{ref.email}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                {/* COLUMN 3: BALANCE ADJUSTMENT */}
+                <div className="space-y-3.5">
+                  <div className="flex items-center space-x-1.5 text-[11px] font-bold text-slate-300 uppercase tracking-wider font-mono">
+                    <Coins className="w-4 h-4 text-emerald-400" />
+                    <span>Direct Funds Desk (Add / Deduct)</span>
+                  </div>
+
+                  <div className="p-3.5 sm:p-4 bg-slate-900 border border-slate-850 rounded-xl space-y-4">
+                    {/* Current Balance Hud */}
+                    <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800 flex justify-between items-center">
+                      <span className="text-[10px] text-slate-400 uppercase font-bold">Current Available Balance:</span>
+                      <span className="text-sm font-black text-amber-300 font-mono">${(usr.balance || 0).toFixed(2)} USDT</span>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <span className="text-[10px] text-slate-400 font-bold uppercase font-mono block">Amount to Add or Deduct (USDT)</span>
+                      <div className="relative">
+                        <span className="absolute left-3 top-2.5 text-slate-400 font-bold">$</span>
+                        <input
+                          type="number"
+                          min="1"
+                          value={adjustAmount}
+                          onChange={(e) => setAdjustAmount(Math.max(1, Number(e.target.value)))}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-6 pr-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-emerald-500"
+                          placeholder="e.g. 50"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 sm:gap-3">
+                      <button
+                        id={`adjust-add-btn-${usr.id}`}
+                        type="button"
+                        onClick={() => {
+                          if (onAdjustUserFunds) {
+                            onAdjustUserFunds(usr.id, adjustAmount, 'add');
+                            alert(`Successfully added $${adjustAmount.toFixed(2)} USDT to user ${usr.email}'s balance!`);
+                          }
+                        }}
+                        className="flex-1 py-2.5 sm:py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black uppercase rounded-lg text-[10px] tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-md cursor-pointer"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>+ Add ${adjustAmount}</span>
+                      </button>
+
+                      <button
+                        id={`adjust-deduct-btn-${usr.id}`}
+                        type="button"
+                        onClick={() => {
+                          if (onAdjustUserFunds) {
+                            onAdjustUserFunds(usr.id, adjustAmount, 'deduct');
+                            alert(`Successfully deducted $${adjustAmount.toFixed(2)} USDT from user ${usr.email}'s balance!`);
+                          }
+                        }}
+                        className="flex-1 py-2.5 sm:py-3 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 hover:border-rose-500/50 text-rose-400 hover:text-rose-350 font-black uppercase rounded-lg text-[10px] tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                      >
+                        <Minus className="w-4 h-4" />
+                        <span>- Deduct ${adjustAmount}</span>
+                      </button>
+                    </div>
+
+                    <span className="text-[9px] text-slate-500 italic block leading-snug">
+                      * Note: Funds transactions are processed instantaneously and added to system ledgers.
+                    </span>
+
+                    {onDeleteUser && usr.role !== 'admin' && (
+                      <button
+                        id={`delete-user-btn-${usr.id}`}
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm(`Are you sure you want to completely delete user account ${usr.email}? This action is irreversible.`)) {
+                            onDeleteUser(usr.id);
+                            setExpandedUserId(null);
+                            alert(`User ${usr.email} deleted.`);
+                          }
+                        }}
+                        className="w-full py-2 bg-rose-500/10 hover:bg-rose-500/25 border border-rose-500/30 text-rose-400 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1"
+                      >
+                        <X className="w-4 h-4" />
+                        <span>Delete User Account</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          );
+
+          return (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-mono font-bold tracking-wider uppercase text-slate-400 block">
+                  👥 User Accounts Ledger ({usersList.length})
+                </span>
+              </div>
+
+              {/* Mobile Card Layout (visible on mobile screens < md) */}
+              <div className="block md:hidden space-y-3">
+                {usersList.map((usr) => {
+                  const isExpanded = expandedUserId === usr.id;
+                  return (
+                    <div key={`mob-usr-${usr.id}`} className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 space-y-3 font-sans text-xs">
+                      {/* Mobile Card Header */}
+                      <div className="flex items-start justify-between gap-2 pb-2 border-b border-slate-800">
+                        <div className="min-w-0">
+                          <span className="text-white font-bold text-xs block truncate" title={usr.email}>{usr.email}</span>
+                          <div className="flex items-center gap-1.5 mt-0.5 font-mono text-[9.5px] text-slate-400">
+                            <span>Name: <strong className="text-slate-200">{usr.name || 'N/A'}</strong></span>
+                          </div>
+                        </div>
+                        <span className={`px-2 py-0.5 rounded text-[8px] uppercase tracking-wider font-mono font-bold shrink-0 ${
+                          usr.kycStatus === 'Verified' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/25' :
+                          usr.kycStatus === 'Under Review' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/25' :
+                          usr.kycStatus === 'Rejected' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/25' :
+                          'bg-slate-800 text-slate-400 border border-slate-700'
+                        }`}>
+                          KYC: {usr.kycStatus || 'Unverified'}
+                        </span>
+                      </div>
+
+                      {/* Stats Grid */}
+                      <div className="grid grid-cols-2 gap-2 bg-slate-950 p-2.5 rounded-xl border border-slate-850 text-[10px] font-mono">
+                        <div>
+                          <span className="text-slate-500 block uppercase text-[8px]">Active Balance</span>
+                          <span className="font-bold text-amber-300">${(usr.balance || 0).toFixed(2)}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block uppercase text-[8px]">Total Deposited</span>
+                          <span className="font-semibold text-emerald-400">${(usr.totalDeposited || 0).toFixed(2)}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block uppercase text-[8px]">Total Withdrawn</span>
+                          <span className="font-semibold text-rose-400">${(usr.totalWithdrawn || 0).toFixed(2)}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block uppercase text-[8px]">Total Invested</span>
+                          <span className="font-semibold text-slate-200">${(usr.totalInvestment || 0).toFixed(2)}</span>
+                        </div>
+                      </div>
+
+                      {/* Manage Toggle Button */}
+                      <button
+                        id={`manage-user-mob-btn-${usr.id}`}
+                        type="button"
+                        onClick={() => {
+                          if (isExpanded) {
+                            setExpandedUserId(null);
+                          } else {
+                            setExpandedUserId(usr.id);
+                            setAdjustAmount(50);
+                          }
+                        }}
+                        className={`w-full py-2 text-[10px] font-bold uppercase font-mono tracking-wider rounded-xl border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                          isExpanded 
+                            ? 'bg-amber-500/10 border-amber-500/40 text-amber-400' 
+                            : 'bg-slate-950 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
+                        }`}
+                      >
+                        <span>🔧 {isExpanded ? 'Close Admin Console' : 'Manage User & KYC Details'}</span>
+                      </button>
+
+                      {/* Expanded Mobile Console */}
+                      {isExpanded && renderUserAdminConsole(usr)}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Desktop Table View (visible on md+) */}
+              <div className="hidden md:block w-full overflow-x-auto bg-slate-900 border border-slate-800 rounded-2xl font-mono text-[10px]">
+                <table className="w-full text-left border-collapse min-w-[1200px]">
+                  <thead>
+                    <tr className="bg-slate-950 text-slate-400 border-b border-slate-850 uppercase text-[8px] font-bold text-center animate-none whitespace-nowrap">
+                      <th className="p-3 text-left">Account Email</th>
+                      <th className="p-3 text-left">Investor Name</th>
+                      <th className="p-3">KYC Status</th>
+                      <th className="p-3">Active Balance</th>
+                      <th className="p-3">Total Deposited</th>
+                      <th className="p-3">Total Withdrawn</th>
+                      <th className="p-3">Total Invested</th>
+                      <th className="p-3">Total Profits</th>
+                      <th className="p-3">Referral Code</th>
+                      <th className="p-3">Referred By</th>
+                      <th className="p-3">Registration Date</th>
+                      <th className="p-3">Action Desk</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-850 text-slate-350 text-center">
+                    {usersList.map((usr) => [
+                      <tr key={usr.id} className="hover:bg-slate-850/20 whitespace-nowrap text-[10px]">
+                        <td className="p-3 text-left text-white font-semibold">
+                          <div className="flex flex-col">
+                            <span>{usr.email}</span>
+                            <span className="text-[8px] text-slate-500 font-mono">ID: {usr.id}</span>
                           </div>
                         </td>
-                      </tr>
-                    )
-                  ])}
-                </tbody>
-              </table>
+                        <td className="p-3 text-left text-slate-400 font-sans">{usr.name || 'N/A'}</td>
+                        <td className="p-3">
+                          <span className={`px-2 py-0.5 rounded text-[8px] uppercase tracking-wider font-sans font-bold ${
+                            usr.kycStatus === 'Verified' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/25' :
+                            usr.kycStatus === 'Under Review' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/25' :
+                            usr.kycStatus === 'Rejected' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/25' :
+                            'bg-slate-800 text-slate-400 border border-slate-700'
+                          }`}>
+                            {usr.kycStatus || 'Unverified'}
+                          </span>
+                        </td>
+                        <td className="p-3 font-bold text-amber-300 font-mono">${(usr.balance || 0).toFixed(2)}</td>
+                        <td className="p-3 text-emerald-400 font-mono font-semibold">${(usr.totalDeposited || 0).toFixed(2)}</td>
+                        <td className="p-3 text-rose-400 font-mono font-semibold">${(usr.totalWithdrawn || 0).toFixed(2)}</td>
+                        <td className="p-3 text-slate-200 font-mono font-semibold">${(usr.totalInvestment || 0).toFixed(2)}</td>
+                        <td className="p-3 text-emerald-300 font-mono font-semibold">${(usr.totalProfitEarned || 0).toFixed(2)}</td>
+                        <td className="p-3 text-amber-400 text-xs font-bold font-mono uppercase tracking-wider">{usr.referralCode}</td>
+                        <td className="p-3 text-slate-500 font-mono">{usr.referredBy || 'None'}</td>
+                        <td className="p-3 text-slate-400 font-mono text-[9px]">{usr.registrationDate ? usr.registrationDate.split('T')[0] : 'N/A'}</td>
+                        <td className="p-3">
+                          <button
+                            id={`manage-user-btn-${usr.id}`}
+                            type="button"
+                            onClick={() => {
+                              if (expandedUserId === usr.id) {
+                                setExpandedUserId(null);
+                              } else {
+                                setExpandedUserId(usr.id);
+                                setAdjustAmount(50);
+                              }
+                            }}
+                            className={`px-2.5 py-1 text-[9px] font-bold uppercase font-mono tracking-wider rounded-lg border transition-all ${
+                              expandedUserId === usr.id 
+                                ? 'bg-amber-500/10 border-amber-500/40 text-amber-400' 
+                                : 'bg-slate-950 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
+                            }`}
+                          >
+                            {expandedUserId === usr.id ? 'Close' : '🔧 Manage'}
+                          </button>
+                        </td>
+                      </tr>,
+                      expandedUserId === usr.id && (
+                        <tr key={`expansion-${usr.id}`} className="bg-slate-950/80 font-sans text-xs">
+                          <td colSpan={12} className="p-2 sm:p-4 text-left border-t border-b border-slate-800">
+                            {renderUserAdminConsole(usr)}
+                          </td>
+                        </tr>
+                      )
+                    ])}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* ==================== TAB 6: SECURITY & ANTI-FRAUD LOGS ==================== */}
         {adminTab === 'security' && (
@@ -2609,6 +2809,70 @@ export default function AdminPanel({
                   className="px-4 py-2 rounded-lg bg-slate-850 hover:bg-slate-750 text-white font-bold uppercase tracking-wider text-[10px] cursor-pointer transition-all"
                 >
                   Close Preview
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Zoomed Deposit Screenshot Modal */}
+      {selectedProofTx && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-4 backdrop-blur-md">
+          <div className="relative max-w-3xl w-full bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h4 className="text-sm font-sans font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <span>📷 Deposit Payment Screenshot Proof</span>
+                </h4>
+                <p className="text-[10px] font-mono text-slate-400 mt-0.5">
+                  Investor: <strong className="text-amber-400">{selectedProofTx.userEmail}</strong> | Deposit Claim: <strong className="text-emerald-400">${selectedProofTx.amount.toFixed(2)} USDT ({selectedProofTx.network})</strong>
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedProofTx(null)}
+                className="w-8 h-8 rounded-full bg-slate-950 border border-slate-800 hover:border-slate-600 text-slate-400 hover:text-white flex items-center justify-center font-bold text-sm transition-all cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="bg-slate-950 border border-slate-850 rounded-xl p-3 flex flex-col items-center justify-center overflow-auto max-h-[70vh]">
+              {selectedProofTx.proofImage && (selectedProofTx.proofImage.startsWith('data:image') || selectedProofTx.proofImage.startsWith('http') || selectedProofTx.proofImage.startsWith('blob:')) ? (
+                <img 
+                  src={selectedProofTx.proofImage} 
+                  alt="Deposit Payment Screenshot" 
+                  className="max-h-[60vh] max-w-full rounded-lg object-contain shadow-2xl border border-slate-800" 
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className="p-8 text-center space-y-3 font-mono">
+                  <FileText className="w-12 h-12 text-amber-500 mx-auto opacity-70" />
+                  <p className="text-xs text-slate-300 font-bold">Attached Proof Reference: {selectedProofTx.proofImage || 'No image attached'}</p>
+                  <p className="text-[10px] text-slate-500">Transaction TxHash: {selectedProofTx.txHash}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-between items-center pt-2 font-mono text-[10px]">
+              <div className="text-slate-400 text-[10px] truncate max-w-[280px]">
+                TxHash: <span className="text-amber-400 font-bold break-all">{selectedProofTx.txHash}</span>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                {selectedProofTx.proofImage && (selectedProofTx.proofImage.startsWith('data:image') || selectedProofTx.proofImage.startsWith('http')) && (
+                  <a
+                    href={selectedProofTx.proofImage}
+                    download={`deposit_screenshot_${selectedProofTx.txHash || selectedProofTx.id}.jpg`}
+                    className="px-3.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold uppercase tracking-wider text-[10px] cursor-pointer shadow transition-all flex items-center gap-1"
+                  >
+                    <span>Download Screenshot</span>
+                  </a>
+                )}
+                <button
+                  onClick={() => setSelectedProofTx(null)}
+                  className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold uppercase tracking-wider text-[10px] cursor-pointer transition-all"
+                >
+                  Close
                 </button>
               </div>
             </div>
