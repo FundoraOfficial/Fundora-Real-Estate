@@ -63,26 +63,31 @@ for (const density of Object.keys(ADAPTIVE_FOREGROUND)) {
 }
 
 // Generate Adaptive Foregrounds
-for (const [density, canvas] of Object.entries(ADAPTIVE_FOREGROUND)) {
-  const dir = path.join(resDir, `mipmap-${density}`);
-  fs.mkdirSync(dir, { recursive: true });
+try {
+  for (const [density, canvas] of Object.entries(ADAPTIVE_FOREGROUND)) {
+    const dir = path.join(resDir, `mipmap-${density}`);
+    fs.mkdirSync(dir, { recursive: true });
 
-  const inner = Math.round(canvas * 0.62); // 62% zone ensures no clipping in circles/squircles
-  execSync(`convert /tmp/fundora_symbol.png -resize ${inner}x${inner} -gravity center -background transparent -extent ${canvas}x${canvas} PNG32:${path.join(dir, 'ic_launcher_foreground.png')}`);
-}
+    const inner = Math.round(canvas * 0.62); // 62% zone ensures no clipping in circles/squircles
+    execSync(`convert /tmp/fundora_symbol.png -resize ${inner}x${inner} -gravity center -background transparent -extent ${canvas}x${canvas} PNG32:${path.join(dir, 'ic_launcher_foreground.png')}`);
+  }
 
-// Generate Legacy & Round Icons
-for (const [density, size] of Object.entries(LEGACY_LAUNCHER)) {
-  const dir = path.join(resDir, `mipmap-${density}`);
-  fs.mkdirSync(dir, { recursive: true });
+  // Generate Legacy & Round Icons
+  for (const [density, size] of Object.entries(LEGACY_LAUNCHER)) {
+    const dir = path.join(resDir, `mipmap-${density}`);
+    fs.mkdirSync(dir, { recursive: true });
 
-  const inner = Math.round(size * 0.85);
+    const inner = Math.round(size * 0.85);
 
-  // Square / Standard legacy icon
-  execSync(`convert /tmp/fundora_symbol.png -resize ${inner}x${inner} -gravity center -background "#030514" -extent ${size}x${size} PNG32:${path.join(dir, 'ic_launcher.png')}`);
+    // Square / Standard legacy icon
+    execSync(`convert /tmp/fundora_symbol.png -resize ${inner}x${inner} -gravity center -background "#030514" -extent ${size}x${size} PNG32:${path.join(dir, 'ic_launcher.png')}`);
 
-  // Round legacy icon
-  execSync(`convert /tmp/fundora_symbol.png -resize ${inner}x${inner} -gravity center -background "#030514" -extent ${size}x${size} PNG32:${path.join(dir, 'ic_launcher_round.png')}`);
+    // Round legacy icon
+    execSync(`convert /tmp/fundora_symbol.png -resize ${inner}x${inner} -gravity center -background "#030514" -extent ${size}x${size} PNG32:${path.join(dir, 'ic_launcher_round.png')}`);
+  }
+} catch (err) {
+  console.warn('⚠️ Dynamic ImageMagick icon scaling warning:', err.message);
+  console.log(' Using existing pre-generated Android icons.');
 }
 
 // 4. Update ic_launcher_background.xml

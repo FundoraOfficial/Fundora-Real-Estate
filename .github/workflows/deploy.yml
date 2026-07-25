@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - master
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -17,6 +18,9 @@ concurrency:
 
 jobs:
   build-and-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -39,6 +43,19 @@ jobs:
           VITE_SECURE_PROXY_URL: ${{ secrets.VITE_SECURE_PROXY_URL || secrets.SECURE_PROXY_URL || vars.VITE_SECURE_PROXY_URL || vars.SECURE_PROXY_URL }}
         run: npm run build
 
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './dist'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+
       - name: Deploy to gh-pages branch
         uses: JamesIves/github-pages-deploy-action@v4
         with:
@@ -46,4 +63,5 @@ jobs:
           folder: dist
           branch: gh-pages
           single-commit: true
+
 
