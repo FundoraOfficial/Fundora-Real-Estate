@@ -12,8 +12,22 @@ if (!fs.existsSync(SRC_JPG)) {
 }
 
 // 1. Prepare high quality Fundora symbol with transparent background
-execSync(`convert ${SRC_JPG} -fuzz 10% -trim +repage /tmp/fundora_trimmed.png`);
-execSync(`convert /tmp/fundora_trimmed.png -fuzz 12% -transparent white PNG32:/tmp/fundora_symbol.png`);
+try {
+  execSync('convert -version', { stdio: 'ignore' });
+} catch {
+  console.log('⚠️ ImageMagick (convert) is not installed in this environment.');
+  console.log(' Skipping dynamic icon generation. Existing pre-generated icons in android/app/src/main/res/ will be used.');
+  process.exit(0);
+}
+
+try {
+  execSync(`convert ${SRC_JPG} -fuzz 10% -trim +repage /tmp/fundora_trimmed.png`);
+  execSync(`convert /tmp/fundora_trimmed.png -fuzz 12% -transparent white PNG32:/tmp/fundora_symbol.png`);
+} catch (err) {
+  console.warn('⚠️ Could not process source image with ImageMagick:', err.message);
+  console.log(' Continuing with existing pre-generated icons in res/.');
+  process.exit(0);
+}
 
 // 2. Android Adaptive Foreground sizes (108dp base grid)
 const ADAPTIVE_FOREGROUND = {

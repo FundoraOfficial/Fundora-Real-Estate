@@ -11,6 +11,10 @@ permissions:
   pages: write
   id-token: write
 
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -22,17 +26,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
       - name: Install dependencies
         run: npm install
 
       - name: Build App
         env:
-          # Note: We do not pass VITE_RESEND_API_KEY here anymore.
-          # GitHub Pages is a static public host, so baking any private Resend API Key into the client-side JavaScript 
-          # would expose it publicly and trigger automatic key revocation by Resend/GitHub secret scanners.
-          # If you want real email delivery on GitHub Pages, use EmailJS (which uses public keys safe for browsers).
           VITE_EMAIL_SERVICE_ACTIVE: "true"
           VITE_EMAILJS_SERVICE_ID: ${{ secrets.VITE_EMAILJS_SERVICE_ID || secrets.EMAILJS_SERVICE_ID || vars.VITE_EMAILJS_SERVICE_ID || vars.EMAILJS_SERVICE_ID }}
           VITE_EMAILJS_TEMPLATE_ID: ${{ secrets.VITE_EMAILJS_TEMPLATE_ID || secrets.EMAILJS_TEMPLATE_ID || vars.VITE_EMAILJS_TEMPLATE_ID || vars.EMAILJS_TEMPLATE_ID }}
@@ -40,8 +39,11 @@ jobs:
           VITE_SECURE_PROXY_URL: ${{ secrets.VITE_SECURE_PROXY_URL || secrets.SECURE_PROXY_URL || vars.VITE_SECURE_PROXY_URL || vars.SECURE_PROXY_URL }}
         run: npm run build
 
-      - name: Deploy to GitHub Pages
+      - name: Deploy to gh-pages branch
         uses: JamesIves/github-pages-deploy-action@v4
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           folder: dist
           branch: gh-pages
+          single-commit: true
+
