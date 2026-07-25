@@ -35,6 +35,9 @@ jobs:
       - name: Build Web
         run: npm run build
 
+      - name: Generate Native Fundora Android Icons
+        run: node scripts/build-android-icons.js
+
       - name: Sync Capacitor
         run: npm run cap:sync
 

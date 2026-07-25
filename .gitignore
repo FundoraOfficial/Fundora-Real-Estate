@@ -7,4 +7,10 @@ coverage/
 android-sdk/
 android/.gradle/
 android/build/
+android/app/build/
 dist/
+assets/
+resources/
+.cache/
+*.apk
+*.zip

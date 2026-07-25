@@ -10,10 +10,10 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "cap:sync": "npx cap sync",
-    "assets:generate": "npx @capacitor/assets generate --android",
+    "cap:sync": "node scripts/build-android-icons.js && npx cap sync",
+    "assets:generate": "node scripts/build-android-icons.js",
     "cap:open": "npx cap open android",
-    "android:build": "vite build && npx cap sync"
+    "android:build": "vite build && node scripts/build-android-icons.js && npx cap sync"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.1",
