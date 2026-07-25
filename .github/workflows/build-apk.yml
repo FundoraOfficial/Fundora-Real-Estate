@@ -39,6 +39,9 @@ jobs:
       - name: Build Web
         run: npm run build
 
+      - name: Generate Android Icons
+        run: npm run assets:generate
+
       - name: Sync Capacitor
         run: npm run cap:sync
 
