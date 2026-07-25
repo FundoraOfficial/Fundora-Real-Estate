@@ -40,6 +40,14 @@ jobs:
         with:
           build-root-directory: android
 
+      - name: Ensure Gradle Wrapper Jar
+        run: |
+          if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ]; then
+            echo "Gradle wrapper jar missing, downloading..."
+            mkdir -p android/gradle/wrapper
+            curl -sL https://raw.githubusercontent.com/gradle/gradle/v8.14.3/gradle/wrapper/gradle-wrapper.jar -o android/gradle/wrapper/gradle-wrapper.jar
+          fi
+
       - name: Build APK
         run: |
           cd android
