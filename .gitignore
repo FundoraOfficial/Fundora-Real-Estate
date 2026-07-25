@@ -8,9 +8,10 @@ android-sdk/
 android/.gradle/
 android/build/
 android/app/build/
+android/app/src/main/assets/
 dist/
-assets/
-resources/
 .cache/
 *.apk
 *.zip
+*.jar
+
