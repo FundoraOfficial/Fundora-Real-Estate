@@ -6,8 +6,8 @@
 import React, { useState, useEffect } from 'react';
 import { NativeBiometric } from 'capacitor-native-biometric';
 import { UserAccount } from '../types';
-import { ShieldAlert, Mail, Lock, User, Key, UserCheck, AlertTriangle, Sparkles, Shield, Loader2, Fingerprint } from 'lucide-react';
-import { sendOtpEmail, isEmailServiceConfigured } from '../lib/emailService';
+import { ShieldAlert, Mail, Lock, User, Key, UserCheck, AlertTriangle, Sparkles, Shield, Loader2, Fingerprint, Eye, EyeOff } from 'lucide-react';
+import { sendOtpEmail, sendWelcomeEmail, isEmailServiceConfigured } from '../lib/emailService';
 import { getApiUrl } from '../utils/api';
 import { db } from '../lib/firebase';
 import { isFirebaseEnabled, saveUserToFirebase } from '../lib/firebaseSync';
@@ -116,6 +116,9 @@ export default function AuthPages({ initialScreen = 'login', onAuthSuccess, onNa
   const [showBackupCode, setShowBackupCode] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
 
   // Device Detection State
   const [isMobile, setIsMobile] = useState(false);
@@ -147,6 +150,12 @@ export default function AuthPages({ initialScreen = 'login', onAuthSuccess, onNa
 
   const handleBiometricSuccess = (matched: UserAccount) => {
     const cleanEmail = matched.email.trim().toLowerCase();
+    if (matched.isDeactivated && matched.role !== 'admin') {
+      setErrorMsg('Apka account admin ne deactivate kar diya hai. Support se rabta karein.');
+      setBiometricLoginStep('error');
+      addSystemLog('Login_Failure', `Biometric login blocked for deactivated user ${cleanEmail}`, 'Alarm');
+      return;
+    }
     if (biometricActionType === 'enable') {
       localStorage.setItem(`inv_device_biometric_active_${cleanEmail}`, 'true');
       try {
@@ -564,6 +573,12 @@ export default function AuthPages({ initialScreen = 'login', onAuthSuccess, onNa
     }
 
     if (matchedUser) {
+      if (matchedUser.isDeactivated && matchedUser.role !== 'admin') {
+        setErrorMsg('Apka account admin ne deactivate kar diya hai. Support se rabta karein. (Your account has been deactivated by administration.)');
+        addSystemLog('Login_Failure', `Login blocked for deactivated account ${cleanEmail}`, 'Alarm');
+        return;
+      }
+
       const expectedPassword = matchedUser.password ? matchedUser.password.trim() : (matchedUser.role === 'admin' ? 'admin123' : 'user123');
       const isAdminEmail = cleanEmail === 'fundora.one@gmail.com' || cleanEmail === 'no-reply@fundora.one' || matchedUser.role === 'admin';
       const isPasswordCorrect = (matchedUser.password && matchedUser.password.trim() === password.trim()) || expectedPassword === password.trim() || (isAdminEmail && (password.trim() === 'Abbottabad@123' || password.trim() === 'admin123'));
@@ -899,6 +914,11 @@ export default function AuthPages({ initialScreen = 'login', onAuthSuccess, onNa
       console.error(`${tag} Step 5 ERROR: Failed to save verified user to Firestore:`, err);
     }
 
+    // Send Welcome Email to newly verified investor
+    try {
+      sendWelcomeEmail(newUser.email, newUser.name).catch(e => console.warn('Welcome email background send error:', e));
+    } catch (_) {}
+
     console.log(`${tag} Step 6: Triggering onAuthSuccess callback and logging in user...`);
     onAuthSuccess(newUser);
   };
@@ -1183,13 +1203,21 @@ export default function AuthPages({ initialScreen = 'login', onAuthSuccess, onNa
                 <div className="relative">
                   <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
                   <input 
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-11 pr-4 py-2.5 text-xs focus:outline-none focus:border-amber-500 text-slate-100"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-11 pr-11 py-2.5 text-xs focus:outline-none focus:border-amber-500 text-slate-100"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3.5 top-2.5 p-1 text-slate-400 hover:text-amber-400 focus:outline-none cursor-pointer transition-colors"
+                    title={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
               </div>
 
@@ -1345,13 +1373,21 @@ export default function AuthPages({ initialScreen = 'login', onAuthSuccess, onNa
                 <div className="relative">
                   <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
                   <input 
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-11 pr-4 py-2.5 text-xs focus:outline-none focus:border-amber-500 text-slate-100"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-11 pr-11 py-2.5 text-xs focus:outline-none focus:border-amber-500 text-slate-100"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3.5 top-2.5 p-1 text-slate-400 hover:text-amber-400 focus:outline-none cursor-pointer transition-colors"
+                    title={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
               </div>
 
@@ -1524,13 +1560,21 @@ export default function AuthPages({ initialScreen = 'login', onAuthSuccess, onNa
                 <div className="relative">
                   <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
                   <input 
-                    type="password"
+                    type={showNewPassword ? "text" : "password"}
                     required
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     placeholder="Minimum 6 characters"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-11 pr-4 py-2.5 text-xs focus:outline-none focus:border-amber-500 text-slate-100"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-11 pr-11 py-2.5 text-xs focus:outline-none focus:border-amber-500 text-slate-100"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    className="absolute right-3.5 top-2.5 p-1 text-slate-400 hover:text-amber-400 focus:outline-none cursor-pointer transition-colors"
+                    title={showNewPassword ? "Hide password" : "Show password"}
+                  >
+                    {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
               </div>
 
@@ -1539,13 +1583,21 @@ export default function AuthPages({ initialScreen = 'login', onAuthSuccess, onNa
                 <div className="relative">
                   <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
                   <input 
-                    type="password"
+                    type={showConfirmNewPassword ? "text" : "password"}
                     required
                     value={confirmNewPassword}
                     onChange={(e) => setConfirmNewPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-11 pr-4 py-2.5 text-xs focus:outline-none focus:border-amber-500 text-slate-100"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-11 pr-11 py-2.5 text-xs focus:outline-none focus:border-amber-500 text-slate-100"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmNewPassword(!showConfirmNewPassword)}
+                    className="absolute right-3.5 top-2.5 p-1 text-slate-400 hover:text-amber-400 focus:outline-none cursor-pointer transition-colors"
+                    title={showConfirmNewPassword ? "Hide password" : "Show password"}
+                  >
+                    {showConfirmNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
               </div>
 

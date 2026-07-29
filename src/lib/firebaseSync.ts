@@ -369,11 +369,39 @@ export const saveUserToFirebase = async (user: UserAccount) => {
   }
 };
 
-export const deleteUserFromFirebase = async (id: string) => {
+export const deleteUserFromFirebase = async (id: string, userEmail?: string) => {
   if (!isFirebaseEnabled()) return;
   try {
     logFirestoreOp('DELETE', 'users', id);
-    await deleteDoc(doc(db, 'users', id));
+    try {
+      await deleteDoc(doc(db, 'users', id));
+    } catch (_) {}
+
+    const cleanE = userEmail ? userEmail.trim().toLowerCase() : '';
+    if (cleanE) {
+      try {
+        await deleteDoc(doc(db, 'users', cleanE));
+      } catch (_) {}
+    }
+
+    const snap = await getDocs(collection(db, 'users'));
+    for (const d of snap.docs) {
+      const data = d.data();
+      const docId = data?.id;
+      const docEmail = data?.email ? data.email.trim().toLowerCase() : '';
+
+      if (
+        d.id === id || 
+        docId === id || 
+        (cleanE && (d.id === cleanE || docEmail === cleanE))
+      ) {
+        try {
+          await deleteDoc(doc(db, 'users', d.id));
+        } catch (err) {
+          console.error(`Failed deleting user doc ${d.id}:`, err);
+        }
+      }
+    }
   } catch (e) {
     console.error('Failed to delete user from Firebase:', e);
   }

@@ -88,6 +88,7 @@ export interface UserAccount {
   webAuthnEnabled?: boolean;
   webAuthnCredentialId?: string;
   webAuthnPublicKey?: string;
+  isDeactivated?: boolean;
 }
 
 export interface ProfitClaimRecord {

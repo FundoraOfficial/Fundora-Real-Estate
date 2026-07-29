@@ -10,11 +10,12 @@ import { getApiUrl, fetchWithFallback } from '../utils/api';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { RealEstateProject, Transaction, UserAccount, InvestmentRecord, ProfitClaimRecord, getAvatarBgClass, getInvestorTier, SystemSettings } from '../types';
 import { generateReceiptPDF, generateDocumentPDF } from '../utils/pdfReceipt';
+import { sendKycEmail } from '../lib/emailService';
 import { 
   TrendingUp, Wallet, ArrowDownCircle, ArrowUpCircle, Users, Percent, Gift, Clock,
   Building, MapPin, Search, Filter, ShieldCheck, ChevronRight, ChevronLeft, Calculator, CheckCircle2,
   AlertTriangle, Copy, Trash, Upload, Landmark, Sparkles, RefreshCw, X, XCircle, ChevronDown, Award,
-  FileText, Plus, User, Lock, Check, Crown, Shield, Download, Printer, ZoomIn, ZoomOut, Eye,
+  FileText, Plus, User, Lock, Check, Crown, Shield, Download, Printer, ZoomIn, ZoomOut, Eye, EyeOff,
   ArrowDownLeft, ArrowUpRight, Briefcase, Coins, History, ListFilter, Calendar, Fingerprint
 } from 'lucide-react';
 
@@ -204,13 +205,13 @@ export default function UserDashboard({
   const [pdfZoom, setPdfZoom] = useState<number>(100);
 
   // Wallet Setup Inputs
-  const [trcLink, setTrcLink] = useState(activeUser.wallet.usdtTrc20Address || '');
-  const [bepLink, setBepLink] = useState(activeUser.wallet.usdtBep20Address || '');
+  const [trcLink, setTrcLink] = useState(activeUser?.wallet?.usdtTrc20Address || '');
+  const [bepLink, setBepLink] = useState(activeUser?.wallet?.usdtBep20Address || '');
 
   React.useEffect(() => {
-    setTrcLink(activeUser.wallet.usdtTrc20Address || '');
-    setBepLink(activeUser.wallet.usdtBep20Address || '');
-  }, [activeUser.wallet.usdtTrc20Address, activeUser.wallet.usdtBep20Address]);
+    setTrcLink(activeUser?.wallet?.usdtTrc20Address || '');
+    setBepLink(activeUser?.wallet?.usdtBep20Address || '');
+  }, [activeUser?.wallet?.usdtTrc20Address, activeUser?.wallet?.usdtBep20Address]);
   const [isBindingOpen, setIsBindingOpen] = useState(false);
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
 
@@ -236,10 +237,10 @@ export default function UserDashboard({
 
   React.useEffect(() => {
     const boundAddress = withdrawNetwork === 'TRC20' 
-      ? activeUser.wallet.usdtTrc20Address 
-      : activeUser.wallet.usdtBep20Address;
+      ? activeUser?.wallet?.usdtTrc20Address 
+      : activeUser?.wallet?.usdtBep20Address;
     setWithdrawAddressInput(boundAddress || '');
-  }, [withdrawNetwork, activeUser.wallet.usdtTrc20Address, activeUser.wallet.usdtBep20Address]);
+  }, [withdrawNetwork, activeUser?.wallet?.usdtTrc20Address, activeUser?.wallet?.usdtBep20Address]);
 
   // Copy helpers
   const [copiedText, setCopiedText] = useState('');
@@ -341,6 +342,9 @@ export default function UserDashboard({
   const [currentPasswordInput, setCurrentPasswordInput] = useState('');
   const [newPasswordInput, setNewPasswordInput] = useState('');
   const [confirmPasswordInput, setConfirmPasswordInput] = useState('');
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [passwordStatus, setPasswordStatus] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // KYC Verification States
@@ -1355,8 +1359,8 @@ export default function UserDashboard({
     }
 
     const boundAddress = withdrawNetwork === 'TRC20' 
-      ? activeUser.wallet.usdtTrc20Address 
-      : activeUser.wallet.usdtBep20Address;
+      ? activeUser?.wallet?.usdtTrc20Address 
+      : activeUser?.wallet?.usdtBep20Address;
     const targetAddress = boundAddress || withdrawAddressInput;
 
     if (!targetAddress || targetAddress.length < 10) {
@@ -1689,7 +1693,7 @@ export default function UserDashboard({
           <div className="space-y-6">
 
             {/* Welcome banner (Only shown when wallet addresses are not yet configured) */}
-            {(!activeUser.wallet.usdtTrc20Address && !activeUser.wallet.usdtBep20Address) && (
+            {(!activeUser?.wallet?.usdtTrc20Address && !activeUser?.wallet?.usdtBep20Address) && (
               <div className="bg-[#0e112d] border border-indigo-500/40 text-white p-5 rounded-[1.25rem] flex justify-between items-center relative overflow-hidden shadow-md">
                 <div className="relative z-10">
                   <h3 className="font-bold text-sm text-white flex items-center gap-1.5 font-sans">
@@ -1709,7 +1713,7 @@ export default function UserDashboard({
             )}
 
             {/* Quick action bindings */}
-            {(!activeUser.wallet.usdtTrc20Address && !activeUser.wallet.usdtBep20Address) && (
+            {(!activeUser?.wallet?.usdtTrc20Address && !activeUser?.wallet?.usdtBep20Address) && (
               <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-[1.25rem] flex items-center justify-between gap-2.5 shadow-xs text-amber-200">
                 <div className="space-y-0.5">
                   <span className="text-xs font-bold text-amber-300 block">Crypto Wallet Not Configured</span>
@@ -2956,7 +2960,7 @@ ${activeViewDoc.project.description}`
           <div className="space-y-6">
 
             {/* INTEGRATED WALLET BINDING CENTER */}
-            {(!activeUser.wallet.usdtTrc20Address && !activeUser.wallet.usdtBep20Address) && (
+            {(!activeUser?.wallet?.usdtTrc20Address && !activeUser?.wallet?.usdtBep20Address) && (
               <div className="bg-[#0e112d] border border-indigo-500/40 rounded-[1.25rem] p-6.5 space-y-6 shadow-xl text-white animate-fadeIn">
                 
                 {/* Always visible elegant header indicating configuration status */}
@@ -2975,12 +2979,12 @@ ${activeViewDoc.project.description}`
                     </div>
                   </div>
                   <div>
-                    {(activeUser.wallet.usdtTrc20Address && activeUser.wallet.usdtBep20Address) ? (
+                    {(activeUser?.wallet?.usdtTrc20Address && activeUser?.wallet?.usdtBep20Address) ? (
                       <span className="text-[9px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 px-3 py-1 rounded-lg font-black uppercase tracking-wider inline-flex items-center gap-1.5 shadow-2xs">
                         <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></span>
                         Fully Bound & Locked
                       </span>
-                    ) : (activeUser.wallet.usdtTrc20Address || activeUser.wallet.usdtBep20Address) ? (
+                    ) : (activeUser?.wallet?.usdtTrc20Address || activeUser?.wallet?.usdtBep20Address) ? (
                       <span className="text-[9px] font-mono bg-amber-500/10 text-amber-400 border border-amber-500/25 px-3 py-1 rounded-lg font-black uppercase tracking-wider inline-flex items-center gap-1.5 shadow-2xs">
                         <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse"></span>
                         Partially Bound
@@ -2999,7 +3003,7 @@ ${activeViewDoc.project.description}`
                   
                   {/* TRC20 Binding Card */}
                   <div className={`p-5 rounded-2xl border transition-all duration-350 relative overflow-hidden ${
-                    activeUser.wallet.usdtTrc20Address 
+                    activeUser?.wallet?.usdtTrc20Address 
                       ? 'border-emerald-500/30 bg-gradient-to-br from-emerald-500/[0.08] to-emerald-600/[0.02] shadow-2xs text-white'
                       : 'border-indigo-500/20 bg-[#13163a]/50 text-indigo-200 hover:border-indigo-500/40'
                   }`}>
@@ -3008,7 +3012,7 @@ ${activeViewDoc.project.description}`
                         <span className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-sm shadow-red-500/20"></span>
                         <span className="text-xs uppercase font-sans font-black text-white">USDT (TRC20 Network)</span>
                       </div>
-                      {activeUser.wallet.usdtTrc20Address ? (
+                      {activeUser?.wallet?.usdtTrc20Address ? (
                         <span className="text-[8.5px] font-black uppercase font-mono text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20 flex items-center gap-1 shadow-2xs">
                           <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
                           Active Bound
@@ -3019,12 +3023,12 @@ ${activeViewDoc.project.description}`
                         </span>
                       )}
                     </div>
-                    {activeUser.wallet.usdtTrc20Address ? (
+                    {activeUser?.wallet?.usdtTrc20Address ? (
                       <div className="space-y-2">
                         <div className="bg-[#060819] border border-indigo-500/20 px-3.5 py-2.5 rounded-xl text-xs font-mono text-indigo-200 truncate flex items-center justify-between gap-2 shadow-2xs">
-                          <span className="truncate select-all font-semibold">{activeUser.wallet.usdtTrc20Address}</span>
+                          <span className="truncate select-all font-semibold">{activeUser?.wallet?.usdtTrc20Address}</span>
                           <button 
-                            onClick={() => triggerCopy(activeUser.wallet.usdtTrc20Address || '', 'trc_wallet_copy')}
+                            onClick={() => triggerCopy(activeUser?.wallet?.usdtTrc20Address || '', 'trc_wallet_copy')}
                             className="text-slate-400 hover:text-emerald-400 shrink-0 cursor-pointer p-1 rounded-lg hover:bg-[#13163a] transition-colors"
                             title="Copy Address"
                           >
@@ -3051,7 +3055,7 @@ ${activeViewDoc.project.description}`
 
                   {/* BEP20 Binding Card */}
                   <div className={`p-5 rounded-2xl border transition-all duration-350 relative overflow-hidden ${
-                    activeUser.wallet.usdtBep20Address 
+                    activeUser?.wallet?.usdtBep20Address 
                       ? 'border-emerald-500/30 bg-gradient-to-br from-emerald-500/[0.08] to-emerald-600/[0.02] shadow-2xs text-white'
                       : 'border-indigo-500/20 bg-[#13163a]/50 text-indigo-200 hover:border-indigo-500/40'
                   }`}>
@@ -3060,7 +3064,7 @@ ${activeViewDoc.project.description}`
                         <span className="w-2.5 h-2.5 rounded-full bg-yellow-500 shadow-sm shadow-yellow-500/20"></span>
                         <span className="text-xs uppercase font-sans font-black text-white">USDT (BEP20 Network)</span>
                       </div>
-                      {activeUser.wallet.usdtBep20Address ? (
+                      {activeUser?.wallet?.usdtBep20Address ? (
                         <span className="text-[8.5px] font-black uppercase font-mono text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20 flex items-center gap-1 shadow-2xs">
                           <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
                           Active Bound
@@ -3071,12 +3075,12 @@ ${activeViewDoc.project.description}`
                         </span>
                       )}
                     </div>
-                    {activeUser.wallet.usdtBep20Address ? (
+                    {activeUser?.wallet?.usdtBep20Address ? (
                       <div className="space-y-2">
                         <div className="bg-[#060819] border border-indigo-500/20 px-3.5 py-2.5 rounded-xl text-xs font-mono text-indigo-200 truncate flex items-center justify-between gap-2 shadow-2xs">
-                          <span className="truncate select-all font-semibold">{activeUser.wallet.usdtBep20Address}</span>
+                          <span className="truncate select-all font-semibold">{activeUser?.wallet?.usdtBep20Address}</span>
                           <button 
-                            onClick={() => triggerCopy(activeUser.wallet.usdtBep20Address || '', 'bep_wallet_copy')}
+                            onClick={() => triggerCopy(activeUser?.wallet?.usdtBep20Address || '', 'bep_wallet_copy')}
                             className="text-slate-400 hover:text-emerald-400 shrink-0 cursor-pointer p-1 rounded-lg hover:bg-[#13163a] transition-colors"
                             title="Copy Address"
                           >
@@ -3104,7 +3108,7 @@ ${activeViewDoc.project.description}`
                 </div>
 
                 {/* Inline Save button if any is unbound */}
-                {(!activeUser.wallet.usdtTrc20Address || !activeUser.wallet.usdtBep20Address) && (
+                {(!activeUser?.wallet?.usdtTrc20Address || !activeUser?.wallet?.usdtBep20Address) && (
                   <div className="pt-4 border-t border-indigo-500/20 flex justify-end">
                     <button
                       onClick={() => {
@@ -3112,7 +3116,7 @@ ${activeViewDoc.project.description}`
                           showStatus("Please paste a wallet address for at least one network.", "error");
                           return;
                         }
-                        onBindWallet(trcLink || activeUser.wallet.usdtTrc20Address || '', bepLink || activeUser.wallet.usdtBep20Address || '');
+                        onBindWallet(trcLink || activeUser?.wallet?.usdtTrc20Address || '', bepLink || activeUser?.wallet?.usdtBep20Address || '');
                         showStatus("Wallet addresses bound and verified securely! You can use them to auto-fill withdrawals instantly.", "success");
                       }}
                       className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 border border-emerald-400 text-white font-sans font-extrabold rounded-xl text-xs tracking-wider uppercase shadow-md hover:shadow-lg active:scale-95 transition-all cursor-pointer inline-flex items-center gap-2"
@@ -3230,23 +3234,23 @@ ${activeViewDoc.project.description}`
                             Official {depositNetwork} Wallet Address
                           </span>
                           <span className={`text-[11.5px] select-all block break-all font-mono leading-relaxed tracking-tight font-extrabold ${
-                            (depositNetwork === 'TRC20' ? systemSettings.usdtTrc20Address : systemSettings.usdtBep20Address)
+                            (depositNetwork === 'TRC20' ? systemSettings?.usdtTrc20Address : systemSettings?.usdtBep20Address)
                               ? 'text-emerald-400'
                               : 'text-rose-400 font-sans italic font-bold'
                           }`}>
                             {(depositNetwork === 'TRC20' 
-                              ? (systemSettings.usdtTrc20Address || '') 
-                              : (systemSettings.usdtBep20Address || '')) || '⚠️ Address not configured by administrator'}
+                              ? (systemSettings?.usdtTrc20Address || '') 
+                              : (systemSettings?.usdtBep20Address || '')) || '⚠️ Address not configured by administrator'}
                           </span>
                         </div>
                         
                         <button
                           type="button"
-                          disabled={!(depositNetwork === 'TRC20' ? systemSettings.usdtTrc20Address : systemSettings.usdtBep20Address)}
+                          disabled={!(depositNetwork === 'TRC20' ? systemSettings?.usdtTrc20Address : systemSettings?.usdtBep20Address)}
                           onClick={() => triggerCopy(
                             depositNetwork === 'TRC20' 
-                              ? (systemSettings.usdtTrc20Address || '') 
-                              : (systemSettings.usdtBep20Address || ''),
+                              ? (systemSettings?.usdtTrc20Address || '') 
+                              : (systemSettings?.usdtBep20Address || ''),
                             'address'
                           )}
                           className={`px-4 py-2.5 rounded-lg text-[9.5px] uppercase font-bold tracking-wider shrink-0 transition-all cursor-pointer inline-flex items-center justify-center gap-1.5 w-full sm:w-auto ${
@@ -3274,14 +3278,14 @@ ${activeViewDoc.project.description}`
                         {/* Interactive Scan QR Frame */}
                         <div className="w-24 h-24 bg-[#11132e] p-2 rounded-xl shrink-0 flex items-center justify-center border border-indigo-500/20 relative overflow-hidden shadow-inner">
                           {depositNetwork === 'TRC20' ? (
-                            systemSettings.usdtTrc20QrCode ? (
+                            systemSettings?.usdtTrc20QrCode ? (
                               <img 
                                 src={systemSettings.usdtTrc20QrCode} 
                                 alt="USDT TRC20 QR"
                                 className="w-full h-full object-contain rounded-lg"
                                 referrerPolicy="no-referrer"
                               />
-                            ) : systemSettings.usdtTrc20Address ? (
+                            ) : systemSettings?.usdtTrc20Address ? (
                               <img 
                                 src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(systemSettings.usdtTrc20Address)}`} 
                                 alt="USDT TRC20 QR"
@@ -3292,14 +3296,14 @@ ${activeViewDoc.project.description}`
                               <div className="text-[8px] text-indigo-400/50 text-center font-sans">No QR</div>
                             )
                           ) : (
-                            systemSettings.usdtBep20QrCode ? (
+                            systemSettings?.usdtBep20QrCode ? (
                               <img 
                                 src={systemSettings.usdtBep20QrCode} 
                                 alt="USDT BEP20 QR"
                                 className="w-full h-full object-contain rounded-lg"
                                 referrerPolicy="no-referrer"
                               />
-                            ) : systemSettings.usdtBep20Address ? (
+                            ) : systemSettings?.usdtBep20Address ? (
                               <img 
                                 src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(systemSettings.usdtBep20Address)}`} 
                                 alt="USDT BEP20 QR"
@@ -3315,10 +3319,10 @@ ${activeViewDoc.project.description}`
                         {/* Safety Guidelines */}
                         <div className="space-y-1.5 text-center sm:text-left flex-1 min-w-0">
                           <span className="font-extrabold text-amber-400 block uppercase text-[10px] tracking-wider font-sans">
-                            {systemSettings.scanGateTitle || '⚠️ Safety Chain Match Warning'}
+                            {systemSettings?.scanGateTitle || '⚠️ Safety Chain Match Warning'}
                           </span>
                           <span className="text-[10px] text-indigo-200/90 leading-relaxed block font-sans">
-                            {systemSettings.scanGateSubtitle || 'Please transfer USDT strictly using the selected chain. Assets sent on wrong chains are lost permanently.'}
+                            {systemSettings?.scanGateSubtitle || 'Please transfer USDT strictly using the selected chain. Assets sent on wrong chains are lost permanently.'}
                           </span>
                         </div>
                       </div>
@@ -3628,7 +3632,7 @@ ${activeViewDoc.project.description}`
                         onChange={(e: any) => {
                           const net = e.target.value;
                           setWithdrawNetwork(net);
-                          const addr = net === 'TRC20' ? activeUser.wallet.usdtTrc20Address : activeUser.wallet.usdtBep20Address;
+                          const addr = net === 'TRC20' ? activeUser?.wallet?.usdtTrc20Address : activeUser?.wallet?.usdtBep20Address;
                           setWithdrawAddressInput(addr || '');
                           showStatus(`Updated liquidation pipeline to ${net} network.`, "info");
                         }}
@@ -3663,8 +3667,8 @@ ${activeViewDoc.project.description}`
                       
                       {(() => {
                         const boundAddress = withdrawNetwork === 'TRC20' 
-                          ? activeUser.wallet.usdtTrc20Address 
-                          : activeUser.wallet.usdtBep20Address;
+                          ? activeUser?.wallet?.usdtTrc20Address 
+                          : activeUser?.wallet?.usdtBep20Address;
                         return boundAddress ? null : (
                           <button
                             type="button"
@@ -3686,8 +3690,8 @@ ${activeViewDoc.project.description}`
 
                     {(() => {
                       const boundAddress = withdrawNetwork === 'TRC20' 
-                        ? activeUser.wallet.usdtTrc20Address 
-                        : activeUser.wallet.usdtBep20Address;
+                        ? activeUser?.wallet?.usdtTrc20Address 
+                        : activeUser?.wallet?.usdtBep20Address;
                       return (
                         <input 
                           type="text"
@@ -3712,8 +3716,8 @@ ${activeViewDoc.project.description}`
                     {/* Auto-fill banner alert of critical safety */}
                     {(() => {
                       const boundAddress = withdrawNetwork === 'TRC20' 
-                        ? activeUser.wallet.usdtTrc20Address 
-                        : activeUser.wallet.usdtBep20Address;
+                        ? activeUser?.wallet?.usdtTrc20Address 
+                        : activeUser?.wallet?.usdtBep20Address;
                       return boundAddress ? (
                         <div className="p-3 bg-emerald-500/10 border border-emerald-500/25 rounded-xl flex items-start gap-2.5 text-[10px] text-emerald-300 leading-normal font-sans shadow-2xs">
                           <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
@@ -5069,6 +5073,9 @@ ${activeViewDoc.project.description}`
                         kycDocumentUrlBack: isIdCard ? (kycFilePreviewBack || undefined) : undefined,
                         kycDocumentFileNameBack: isIdCard ? (kycFileNameBack || undefined) : undefined,
                       });
+                      try {
+                        sendKycEmail(activeUser.email, activeUser.name, 'Under Review').catch(e => console.warn('KYC email error:', e));
+                      } catch (_) {}
                       setKycStatus({ message: 'Success! Your identity documents have been submitted and are under review.', type: 'success' });
                     }}
                     className="w-full sm:w-auto px-6 py-2.5 bg-gradient-to-r from-indigo-500 to-violet-600 hover:brightness-110 text-white font-bold rounded-xl text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 cursor-pointer"
@@ -5103,33 +5110,63 @@ ${activeViewDoc.project.description}`
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-[10px] font-bold text-indigo-300 uppercase tracking-wider mb-1">Current Password</label>
-                  <input
-                    type="password"
-                    value={currentPasswordInput}
-                    onChange={(e) => setCurrentPasswordInput(e.target.value)}
-                    className="w-full px-3.5 py-2 border border-indigo-500/30 rounded-xl text-xs font-medium focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none text-white bg-[#060819]"
-                    placeholder="Enter current password"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showCurrentPassword ? "text" : "password"}
+                      value={currentPasswordInput}
+                      onChange={(e) => setCurrentPasswordInput(e.target.value)}
+                      className="w-full pl-3.5 pr-10 py-2 border border-indigo-500/30 rounded-xl text-xs font-medium focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none text-white bg-[#060819]"
+                      placeholder="Enter current password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                      className="absolute right-3 top-2 p-0.5 text-indigo-400 hover:text-white focus:outline-none cursor-pointer transition-colors"
+                      title={showCurrentPassword ? "Hide password" : "Show password"}
+                    >
+                      {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-indigo-300 uppercase tracking-wider mb-1">New Security Password</label>
-                  <input
-                    type="password"
-                    value={newPasswordInput}
-                    onChange={(e) => setNewPasswordInput(e.target.value)}
-                    className="w-full px-3.5 py-2 border border-indigo-500/30 rounded-xl text-xs font-medium focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none text-white bg-[#060819]"
-                    placeholder="Minimum 6 characters"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showNewPassword ? "text" : "password"}
+                      value={newPasswordInput}
+                      onChange={(e) => setNewPasswordInput(e.target.value)}
+                      className="w-full pl-3.5 pr-10 py-2 border border-indigo-500/30 rounded-xl text-xs font-medium focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none text-white bg-[#060819]"
+                      placeholder="Minimum 6 characters"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-3 top-2 p-0.5 text-indigo-400 hover:text-white focus:outline-none cursor-pointer transition-colors"
+                      title={showNewPassword ? "Hide password" : "Show password"}
+                    >
+                      {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-indigo-300 uppercase tracking-wider mb-1">Confirm New Password</label>
-                  <input
-                    type="password"
-                    value={confirmPasswordInput}
-                    onChange={(e) => setConfirmPasswordInput(e.target.value)}
-                    className="w-full px-3.5 py-2 border border-indigo-500/30 rounded-xl text-xs font-medium focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none text-white bg-[#060819]"
-                    placeholder="Re-type new password"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showConfirmPassword ? "text" : "password"}
+                      value={confirmPasswordInput}
+                      onChange={(e) => setConfirmPasswordInput(e.target.value)}
+                      className="w-full pl-3.5 pr-10 py-2 border border-indigo-500/30 rounded-xl text-xs font-medium focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none text-white bg-[#060819]"
+                      placeholder="Re-type new password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-3 top-2 p-0.5 text-indigo-400 hover:text-white focus:outline-none cursor-pointer transition-colors"
+                      title={showConfirmPassword ? "Hide password" : "Show password"}
+                    >
+                      {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
               </div>
 

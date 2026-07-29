@@ -8,7 +8,7 @@ import { RealEstateProject, Transaction, UserAccount, SecurityLog, ProjectCatego
 import { 
   Shield, Users, Landmark, Coins, FileText, Check, X, ShieldAlert,
   ArrowDownCircle, ArrowUpCircle, Plus, Eye, RefreshCw, Key, AlertOctagon, BarChart2,
-  Unlock, Minus, Wallet, User, Lock, Mail, MessageSquare, CheckCircle, XCircle, Download
+  Unlock, Minus, Wallet, User, Lock, Mail, MessageSquare, CheckCircle, XCircle, Download, Ban, CheckCircle2, Power, Trash2
 } from 'lucide-react';
 
 interface AdminPanelProps {
@@ -80,24 +80,24 @@ export default function AdminPanel({
   const setAdminTab = setActiveAdminTab !== undefined ? (setActiveAdminTab as any) : setLocalAdminTab;
 
   // Local state for system settings form
-  const [trc20Addr, setTrc20Addr] = useState<string>(systemSettings.usdtTrc20Address || '');
-  const [bep20Addr, setBep20Addr] = useState<string>(systemSettings.usdtBep20Address || '');
-  const [trc20QrCode, setTrc20QrCode] = useState<string>(systemSettings.usdtTrc20QrCode || '');
-  const [bep20QrCode, setBep20QrCode] = useState<string>(systemSettings.usdtBep20QrCode || '');
-  const [gateTitle, setGateTitle] = useState<string>(systemSettings.scanGateTitle);
-  const [gateSubtitle, setGateSubtitle] = useState<string>(systemSettings.scanGateSubtitle);
-  const [apiUrl, setApiUrl] = useState<string>(systemSettings.apiUrl || '');
-  const [geminiApiKey, setGeminiApiKey] = useState<string>(systemSettings.geminiApiKey || '');
+  const [trc20Addr, setTrc20Addr] = useState<string>(systemSettings?.usdtTrc20Address || '');
+  const [bep20Addr, setBep20Addr] = useState<string>(systemSettings?.usdtBep20Address || '');
+  const [trc20QrCode, setTrc20QrCode] = useState<string>(systemSettings?.usdtTrc20QrCode || '');
+  const [bep20QrCode, setBep20QrCode] = useState<string>(systemSettings?.usdtBep20QrCode || '');
+  const [gateTitle, setGateTitle] = useState<string>(systemSettings?.scanGateTitle || '');
+  const [gateSubtitle, setGateSubtitle] = useState<string>(systemSettings?.scanGateSubtitle || '');
+  const [apiUrl, setApiUrl] = useState<string>(systemSettings?.apiUrl || '');
+  const [geminiApiKey, setGeminiApiKey] = useState<string>(systemSettings?.geminiApiKey || '');
 
   React.useEffect(() => {
-    setTrc20Addr(systemSettings.usdtTrc20Address || '');
-    setBep20Addr(systemSettings.usdtBep20Address || '');
-    setTrc20QrCode(systemSettings.usdtTrc20QrCode || '');
-    setBep20QrCode(systemSettings.usdtBep20QrCode || '');
-    setGateTitle(systemSettings.scanGateTitle);
-    setGateSubtitle(systemSettings.scanGateSubtitle);
-    setApiUrl(systemSettings.apiUrl || '');
-    setGeminiApiKey(systemSettings.geminiApiKey || '');
+    setTrc20Addr(systemSettings?.usdtTrc20Address || '');
+    setBep20Addr(systemSettings?.usdtBep20Address || '');
+    setTrc20QrCode(systemSettings?.usdtTrc20QrCode || '');
+    setBep20QrCode(systemSettings?.usdtBep20QrCode || '');
+    setGateTitle(systemSettings?.scanGateTitle || '');
+    setGateSubtitle(systemSettings?.scanGateSubtitle || '');
+    setApiUrl(systemSettings?.apiUrl || '');
+    setGeminiApiKey(systemSettings?.geminiApiKey || '');
   }, [systemSettings]);
 
   // Admin self-password reset state
@@ -230,6 +230,8 @@ export default function AdminPanel({
 
   // User Management State
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
+  const [deleteConfirmUserId, setDeleteConfirmUserId] = useState<string | null>(null);
+  const [actionToast, setActionToast] = useState<string | null>(null);
   const [adjustAmount, setAdjustAmount] = useState<number>(50);
   const [zoomedKycUrl, setZoomedKycUrl] = useState<string | null>(null);
   const [zoomedKycName, setZoomedKycName] = useState<string>('');
@@ -470,13 +472,15 @@ export default function AdminPanel({
           </div>
         </div>
 
-        <button
-          id="back-to-user-portal"
-          onClick={onBackToDashboard}
-          className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 hover:text-white text-slate-300 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all"
-        >
-          ← Return to Portal
-        </button>
+        {currentUser?.role !== 'admin' && (
+          <button
+            id="back-to-user-portal"
+            onClick={onBackToDashboard}
+            className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 hover:text-white text-slate-300 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all"
+          >
+            ← Return to Portal
+          </button>
+        )}
       </div>
 
       {/* Admin Action Bar: Trigger rollover immediately */}
@@ -1816,7 +1820,7 @@ export default function AdminPanel({
                     <div className="p-3 bg-slate-900 border border-slate-850 rounded-xl space-y-1.5">
                       <div className="flex justify-between items-center">
                         <span className="text-[9px] uppercase font-mono font-bold text-slate-400 block">USDT (TRC20 Network)</span>
-                        {usr.wallet.usdtTrc20Address && (
+                        {usr.wallet?.usdtTrc20Address && (
                           <button
                             id={`unbind-trc-${usr.id}`}
                             onClick={() => {
@@ -1835,7 +1839,7 @@ export default function AdminPanel({
                         <input
                           type="text"
                           id={`trc20-admin-input-${usr.id}`}
-                          defaultValue={usr.wallet.usdtTrc20Address || ''}
+                          defaultValue={usr.wallet?.usdtTrc20Address || ''}
                           className="flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-white font-mono text-[10px] focus:outline-none"
                           placeholder="Manually bind TRC20 (starts with T)"
                         />
@@ -1846,7 +1850,7 @@ export default function AdminPanel({
                             if (onUpdateUser) {
                               onUpdateUser(usr.id, {
                                 wallet: {
-                                  ...usr.wallet,
+                                  ...(usr.wallet || { usdtTrc20Address: '', usdtBep20Address: '', isVerified: false }),
                                   usdtTrc20Address: inputVal,
                                   isVerified: !!inputVal
                                 }
@@ -1865,7 +1869,7 @@ export default function AdminPanel({
                     <div className="p-3 bg-slate-900 border border-slate-850 rounded-xl space-y-1.5">
                       <div className="flex justify-between items-center">
                         <span className="text-[9px] uppercase font-mono font-bold text-slate-400 block">USDT (BEP20 Network)</span>
-                        {usr.wallet.usdtBep20Address && (
+                        {usr.wallet?.usdtBep20Address && (
                           <button
                             id={`unbind-bep-${usr.id}`}
                             onClick={() => {
@@ -1884,7 +1888,7 @@ export default function AdminPanel({
                         <input
                           type="text"
                           id={`bep20-admin-input-${usr.id}`}
-                          defaultValue={usr.wallet.usdtBep20Address || ''}
+                          defaultValue={usr.wallet?.usdtBep20Address || ''}
                           className="flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-white font-mono text-[10px] focus:outline-none"
                           placeholder="Manually bind BEP20 (starts with 0x)"
                         />
@@ -1895,7 +1899,7 @@ export default function AdminPanel({
                             if (onUpdateUser) {
                               onUpdateUser(usr.id, {
                                 wallet: {
-                                  ...usr.wallet,
+                                  ...(usr.wallet || { usdtTrc20Address: '', usdtBep20Address: '', isVerified: false }),
                                   usdtBep20Address: inputVal,
                                   isVerified: !!inputVal
                                 }
@@ -1999,23 +2003,92 @@ export default function AdminPanel({
                       * Note: Funds transactions are processed instantaneously and added to system ledgers.
                     </span>
 
-                    {onDeleteUser && usr.role !== 'admin' && (
-                      <button
-                        id={`delete-user-btn-${usr.id}`}
-                        type="button"
-                        onClick={() => {
-                          if (window.confirm(`Are you sure you want to completely delete user account ${usr.email}? This action is irreversible.`)) {
-                            onDeleteUser(usr.id);
-                            setExpandedUserId(null);
-                            alert(`User ${usr.email} deleted.`);
-                          }
-                        }}
-                        className="w-full py-2 bg-rose-500/10 hover:bg-rose-500/25 border border-rose-500/30 text-rose-400 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1"
-                      >
-                        <X className="w-4 h-4" />
-                        <span>Delete User Account</span>
-                      </button>
-                    )}
+                    <div className="pt-2 space-y-2 border-t border-slate-800/80">
+                      <span className="text-[9.5px] text-slate-400 font-bold uppercase font-mono block">Account Actions & Status Management</span>
+                      <div className="flex flex-col gap-2">
+                        {usr.id !== currentUser?.id && (
+                          <button
+                            id={`toggle-active-btn-${usr.id}`}
+                            type="button"
+                            onClick={() => {
+                              const newDeactivatedStatus = !usr.isDeactivated;
+                              if (onUpdateUser) {
+                                onUpdateUser(usr.id, { isDeactivated: newDeactivatedStatus });
+                                setActionToast(`Account ${usr.email} has been ${newDeactivatedStatus ? 'DEACTIVATED / SUSPENDED' : 'ACTIVATED'}.`);
+                                setTimeout(() => setActionToast(null), 4000);
+                              }
+                            }}
+                            className={`w-full py-2 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                              usr.isDeactivated
+                                ? 'bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-400'
+                                : 'bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-400'
+                            }`}
+                          >
+                            {usr.isDeactivated ? (
+                              <>
+                                <CheckCircle2 className="w-4 h-4" />
+                                <span>Activate User Account</span>
+                              </>
+                            ) : (
+                              <>
+                                <Ban className="w-4 h-4" />
+                                <span>Deactivate User Account</span>
+                              </>
+                            )}
+                          </button>
+                        )}
+
+                        {deleteConfirmUserId === usr.id ? (
+                          <div className="p-3 bg-rose-500/15 border border-rose-500/40 rounded-xl space-y-2.5 animate-fadeIn">
+                            <div className="flex items-center gap-2 text-rose-300 font-bold text-xs">
+                              <Trash2 className="w-4 h-4 text-rose-400 shrink-0" />
+                              <span>Confirm account deletion for {usr.email}?</span>
+                            </div>
+                            <p className="text-[10px] text-rose-200/90 leading-relaxed font-sans">
+                              This action will permanently delete user account <strong className="text-white font-mono">{usr.email}</strong> from the database. This action cannot be undone.
+                            </p>
+                            <div className="flex items-center gap-2 pt-1">
+                              <button
+                                id={`confirm-delete-user-btn-${usr.id}`}
+                                type="button"
+                                onClick={() => {
+                                  if (onDeleteUser) {
+                                    onDeleteUser(usr.id);
+                                    setExpandedUserId(null);
+                                    setDeleteConfirmUserId(null);
+                                    setActionToast(`User account ${usr.email} permanently deleted.`);
+                                    setTimeout(() => setActionToast(null), 5000);
+                                  }
+                                }}
+                                className="flex-1 py-2 bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-black uppercase tracking-wider rounded-lg transition-all cursor-pointer shadow-md flex items-center justify-center gap-1.5"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>Yes, Delete Account Permanently</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeleteConfirmUserId(null)}
+                                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          onDeleteUser && usr.id !== currentUser?.id && (
+                            <button
+                              id={`delete-user-btn-${usr.id}`}
+                              type="button"
+                              onClick={() => setDeleteConfirmUserId(usr.id)}
+                              className="w-full py-2 bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/40 text-rose-400 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                              <span>Delete User Account</span>
+                            </button>
+                          )
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -2031,6 +2104,16 @@ export default function AdminPanel({
                 </span>
               </div>
 
+              {actionToast && (
+                <div className="p-3 bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 rounded-xl text-xs font-sans font-bold flex items-center justify-between shadow-md animate-fadeIn">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>{actionToast}</span>
+                  </div>
+                  <button onClick={() => setActionToast(null)} className="text-slate-400 hover:text-white text-xs p-1 cursor-pointer">✕</button>
+                </div>
+              )}
+
               {/* Mobile Card Layout (visible on mobile screens < md) */}
               <div className="block md:hidden space-y-3">
                 {usersList.map((usr) => {
@@ -2045,14 +2128,21 @@ export default function AdminPanel({
                             <span>Name: <strong className="text-slate-200">{usr.name || 'N/A'}</strong></span>
                           </div>
                         </div>
-                        <span className={`px-2 py-0.5 rounded text-[8px] uppercase tracking-wider font-mono font-bold shrink-0 ${
-                          usr.kycStatus === 'Verified' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/25' :
-                          usr.kycStatus === 'Under Review' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/25' :
-                          usr.kycStatus === 'Rejected' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/25' :
-                          'bg-slate-800 text-slate-400 border border-slate-700'
-                        }`}>
-                          KYC: {usr.kycStatus || 'Unverified'}
-                        </span>
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          <span className={`px-2 py-0.5 rounded text-[8px] uppercase tracking-wider font-mono font-bold ${
+                            usr.isDeactivated ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30' : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                          }`}>
+                            {usr.isDeactivated ? 'Deactivated' : 'Active'}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-[8px] uppercase tracking-wider font-mono font-bold ${
+                            usr.kycStatus === 'Verified' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/25' :
+                            usr.kycStatus === 'Under Review' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/25' :
+                            usr.kycStatus === 'Rejected' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/25' :
+                            'bg-slate-800 text-slate-400 border border-slate-700'
+                          }`}>
+                            KYC: {usr.kycStatus || 'Unverified'}
+                          </span>
+                        </div>
                       </div>
 
                       {/* Stats Grid */}
@@ -2110,6 +2200,7 @@ export default function AdminPanel({
                     <tr className="bg-slate-950 text-slate-400 border-b border-slate-850 uppercase text-[8px] font-bold text-center animate-none whitespace-nowrap">
                       <th className="p-3 text-left">Account Email</th>
                       <th className="p-3 text-left">Investor Name</th>
+                      <th className="p-3">Status</th>
                       <th className="p-3">KYC Status</th>
                       <th className="p-3">Active Balance</th>
                       <th className="p-3">Total Deposited</th>
@@ -2134,6 +2225,13 @@ export default function AdminPanel({
                         <td className="p-3 text-left text-slate-400 font-sans">{usr.name || 'N/A'}</td>
                         <td className="p-3">
                           <span className={`px-2 py-0.5 rounded text-[8px] uppercase tracking-wider font-sans font-bold ${
+                            usr.isDeactivated ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30' : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                          }`}>
+                            {usr.isDeactivated ? 'Deactivated' : 'Active'}
+                          </span>
+                        </td>
+                        <td className="p-3">
+                          <span className={`px-2 py-0.5 rounded text-[8px] uppercase tracking-wider font-sans font-bold ${
                             usr.kycStatus === 'Verified' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/25' :
                             usr.kycStatus === 'Under Review' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/25' :
                             usr.kycStatus === 'Rejected' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/25' :
@@ -2154,7 +2252,8 @@ export default function AdminPanel({
                           <button
                             id={`manage-user-btn-${usr.id}`}
                             type="button"
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
                               if (expandedUserId === usr.id) {
                                 setExpandedUserId(null);
                               } else {
@@ -2162,7 +2261,7 @@ export default function AdminPanel({
                                 setAdjustAmount(50);
                               }
                             }}
-                            className={`px-2.5 py-1 text-[9px] font-bold uppercase font-mono tracking-wider rounded-lg border transition-all ${
+                            className={`px-2.5 py-1 text-[9px] font-bold uppercase font-mono tracking-wider rounded-lg border transition-all cursor-pointer ${
                               expandedUserId === usr.id 
                                 ? 'bg-amber-500/10 border-amber-500/40 text-amber-400' 
                                 : 'bg-slate-950 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
@@ -2174,7 +2273,7 @@ export default function AdminPanel({
                       </tr>,
                       expandedUserId === usr.id && (
                         <tr key={`expansion-${usr.id}`} className="bg-slate-950/80 font-sans text-xs">
-                          <td colSpan={12} className="p-2 sm:p-4 text-left border-t border-b border-slate-800">
+                          <td colSpan={13} className="p-2 sm:p-4 text-left border-t border-b border-slate-800">
                             {renderUserAdminConsole(usr)}
                           </td>
                         </tr>
@@ -2364,11 +2463,7 @@ export default function AdminPanel({
                       {trc20Addr && (
                         <button
                           type="button"
-                          onClick={() => {
-                            if (confirm('Are you sure you want to delete/clear the TRC20 Address? Users will not be able to deposit via TRC20.')) {
-                              setTrc20Addr('');
-                            }
-                          }}
+                          onClick={() => setTrc20Addr('')}
                           className="px-3 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 rounded-xl text-xs font-bold font-mono whitespace-nowrap cursor-pointer transition-colors"
                         >
                           Clear
@@ -2433,11 +2528,7 @@ export default function AdminPanel({
                       {bep20Addr && (
                         <button
                           type="button"
-                          onClick={() => {
-                            if (confirm('Are you sure you want to delete/clear the BEP20 Address? Users will not be able to deposit via BEP20.')) {
-                              setBep20Addr('');
-                            }
-                          }}
+                          onClick={() => setBep20Addr('')}
                           className="px-3 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 rounded-xl text-xs font-bold font-mono whitespace-nowrap cursor-pointer transition-colors"
                         >
                           Clear
@@ -2734,9 +2825,7 @@ export default function AdminPanel({
                             )}
                             <button
                               onClick={() => {
-                                if (confirm("Are you sure you want to delete this inquiry permanently?")) {
-                                  onDeleteInquiry && onDeleteInquiry(inq.id);
-                                }
+                                onDeleteInquiry && onDeleteInquiry(inq.id);
                               }}
                               className="px-2 py-1 rounded bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 text-[9px] uppercase font-bold tracking-wider border border-rose-500/25 transition-all cursor-pointer"
                               title="Delete permanently"

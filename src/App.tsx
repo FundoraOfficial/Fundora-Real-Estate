@@ -49,6 +49,7 @@ import {
   subscribeToSecurityLogsCollection,
   subscribeToSystemSettings
 } from './lib/firebaseSync';
+import { sendDepositEmail, sendWithdrawalEmail, sendKycEmail } from './lib/emailService';
 
 // Safe localStorage helper to prevent QuotaExceededError crashes with large attachments
 const safeSetLocalStorage = (key: string, value: string) => {
@@ -97,9 +98,22 @@ export default function App() {
   const [usersListState, setUsersListState] = useState<UserAccount[]>(() => {
     const saved = localStorage.getItem('inv_users');
     const list: UserAccount[] = saved ? JSON.parse(saved) : [INITIAL_USER, INITIAL_ADMIN];
+    let deletedIds: string[] = [];
+    let deletedEmails: string[] = [];
+    try {
+      deletedIds = JSON.parse(localStorage.getItem('inv_deleted_user_ids') || '[]');
+      deletedEmails = JSON.parse(localStorage.getItem('inv_deleted_user_emails') || '[]');
+    } catch (_) {}
+
     return list
       .map(u => u.id === 'user-admin' && (u.email === 'admin@fundora.one' || u.email === 'no-reply@fundora.one') ? { ...u, email: 'fundora.one@gmail.com' } : u)
-      .filter(u => u && u.email && u.email.trim().toLowerCase() !== 'no-reply@fundora.one');
+      .filter(u => 
+        u && 
+        u.email && 
+        u.email.trim().toLowerCase() !== 'no-reply@fundora.one' &&
+        !deletedIds.includes(u.id) &&
+        !deletedEmails.includes(u.email.trim().toLowerCase())
+      );
   });
 
   const [activeUser, setActiveUser] = useState<UserAccount | null>(() => {
@@ -528,8 +542,21 @@ export default function App() {
           }
         }
 
+        let deletedIds: string[] = [];
+        let deletedEmails: string[] = [];
+        try {
+          deletedIds = JSON.parse(localStorage.getItem('inv_deleted_user_ids') || '[]');
+          deletedEmails = JSON.parse(localStorage.getItem('inv_deleted_user_emails') || '[]');
+        } catch (_) {}
+
         if (users !== null && users.length > 0) {
-          const cleanUsers = users.filter(u => u && u.email && u.email.trim().toLowerCase() !== 'no-reply@fundora.one');
+          const cleanUsers = users.filter(u => 
+            u && 
+            u.email && 
+            u.email.trim().toLowerCase() !== 'no-reply@fundora.one' &&
+            !deletedIds.includes(u.id) &&
+            !deletedEmails.includes(u.email.trim().toLowerCase())
+          );
           setUsersListState(cleanUsers);
           safeSetLocalStorage('inv_users', JSON.stringify(cleanUsers));
         }
@@ -547,28 +574,33 @@ export default function App() {
           try {
             const parsed = JSON.parse(savedActiveUser);
             if (parsed && parsed.email) {
-              const freshUser = users ? users.find(u => u.id === parsed.id || u.email.toLowerCase().trim() === parsed.email.toLowerCase().trim()) : null;
-              if (freshUser) {
-                setActiveUser(freshUser);
-                const isLocalActive = localStorage.getItem(`inv_device_biometric_active_${freshUser.email.toLowerCase().trim()}`) === 'true';
-                if (freshUser.webAuthnEnabled && isAppLockedRef.current && isLocalActive) {
-                  setIsAppLocked(true);
-                } else {
-                  setIsAppLocked(false);
-                }
+              const cleanE = parsed.email.toLowerCase().trim();
+              const isDeleted = deletedIds.includes(parsed.id) || deletedEmails.includes(cleanE);
+              if (isDeleted) {
+                setActiveUser(null);
+                localStorage.removeItem('inv_active_user');
+                safeSetLocalStorage('inv_active_user', '');
               } else {
-                // Local activeUser found in localStorage but not yet in Firestore DB.
-                // Auto-sync this account to Firestore DB so it's safely saved in cloud
-                console.log(`[Sync] Local activeUser ${parsed.email} not in Firestore DB yet. Auto-persisting to Firestore...`);
-                setActiveUser(parsed);
-                setIsAppLocked(false);
-                saveAndSyncUser(parsed);
-                // Also add to local usersListState so it shows up in users collection
-                setUsersListState(prev => {
-                  const exists = prev.some(u => u.email.trim().toLowerCase() === parsed.email.trim().toLowerCase());
-                  if (exists) return prev;
-                  return [...prev, parsed];
-                });
+                const freshUser = users ? users.find(u => u.id === parsed.id || u.email.toLowerCase().trim() === cleanE) : null;
+                if (freshUser) {
+                  setActiveUser(freshUser);
+                  const isLocalActive = localStorage.getItem(`inv_device_biometric_active_${freshUser.email.toLowerCase().trim()}`) === 'true';
+                  if (freshUser.webAuthnEnabled && isAppLockedRef.current && isLocalActive) {
+                    setIsAppLocked(true);
+                  } else {
+                    setIsAppLocked(false);
+                  }
+                } else {
+                  console.log(`[Sync] Local activeUser ${parsed.email} not in Firestore DB yet. Auto-persisting to Firestore...`);
+                  setActiveUser(parsed);
+                  setIsAppLocked(false);
+                  saveAndSyncUser(parsed);
+                  setUsersListState(prev => {
+                    const exists = prev.some(u => u.email.trim().toLowerCase() === cleanE);
+                    if (exists) return prev;
+                    return [...prev, parsed];
+                  });
+                }
               }
             }
           } catch (_) {
@@ -593,7 +625,21 @@ export default function App() {
 
     const unsubUsers = subscribeToUsersCollection((liveUsers) => {
       if (liveUsers !== undefined) {
-        const cleanUsers = (liveUsers || []).filter(u => u && u.email && u.email.trim().toLowerCase() !== 'no-reply@fundora.one');
+        let deletedIds: string[] = [];
+        let deletedEmails: string[] = [];
+        try {
+          deletedIds = JSON.parse(localStorage.getItem('inv_deleted_user_ids') || '[]');
+          deletedEmails = JSON.parse(localStorage.getItem('inv_deleted_user_emails') || '[]');
+        } catch (_) {}
+
+        const cleanUsers = (liveUsers || []).filter(u => 
+          u && 
+          u.email && 
+          u.email.trim().toLowerCase() !== 'no-reply@fundora.one' &&
+          !deletedIds.includes(u.id) &&
+          !deletedEmails.includes(u.email.trim().toLowerCase())
+        );
+
         setUsersListState(cleanUsers);
         safeSetLocalStorage('inv_users', JSON.stringify(cleanUsers));
 
@@ -603,7 +649,15 @@ export default function App() {
           const currentId = activeUserRef.current.id;
           const freshActive = cleanUsers.find(u => u.id === currentId || (u.email && u.email.toLowerCase().trim() === currentE));
           if (freshActive) {
-            setActiveUser(freshActive);
+            if (freshActive.isDeactivated && freshActive.role !== 'admin') {
+              setActiveUser(null);
+              localStorage.removeItem('inv_active_user');
+            } else {
+              setActiveUser(freshActive);
+            }
+          } else if (deletedIds.includes(currentId) || deletedEmails.includes(currentE)) {
+            setActiveUser(null);
+            localStorage.removeItem('inv_active_user');
           }
         }
       }
@@ -810,6 +864,13 @@ export default function App() {
   };
 
   const handleUpdateAnyUser = (userId: string, updatedFields: Partial<UserAccount>) => {
+    const targetUser = usersListState.find(u => u.id === userId);
+    if (targetUser && updatedFields.kycStatus && updatedFields.kycStatus !== targetUser.kycStatus) {
+      try {
+        sendKycEmail(targetUser.email, targetUser.name, updatedFields.kycStatus as any).catch(e => console.warn('KYC status email error:', e));
+      } catch (_) {}
+    }
+
     setUsersListState(prev => prev.map(u => {
       if (u.id === userId) {
         const updatedU = { ...u, ...updatedFields };
@@ -893,7 +954,7 @@ export default function App() {
     const updatedUser = {
       ...activeUser,
       wallet: {
-        ...activeUser.wallet,
+        ...(activeUser.wallet || { usdtTrc20Address: '', usdtBep20Address: '', isVerified: false }),
         usdtTrc20Address: trc20,
         usdtBep20Address: bep20,
         isVerified: true
@@ -927,7 +988,7 @@ export default function App() {
       network,
       txHash,
       proofImage: proofImg,
-      walletAddress: network === 'TRC20' ? activeUser.wallet.usdtTrc20Address || 'TX1h2A9eFm7xKsZ8Jq9w' : activeUser.wallet.usdtBep20Address || '0x71C7656EC7ab88b0',
+      walletAddress: network === 'TRC20' ? activeUser.wallet?.usdtTrc20Address || 'TX1h2A9eFm7xKsZ8Jq9w' : activeUser.wallet?.usdtBep20Address || '0x71C7656EC7ab88b0',
       date: new Date().toISOString().replace('T', ' ').slice(0, 16),
       status: 'Pending',
       description: `Pending USDT ${network} Deposit proof manual verification.`
@@ -936,6 +997,10 @@ export default function App() {
     setTransactionsList(prev => [newTx, ...prev]);
     saveTransactionToFirebase(newTx);
     addSystemLog('Admin_Action', `Pending deposit request of $${amount} USDT submitted by ${activeUser.email}. Check ledger.`, 'Info');
+
+    try {
+      sendDepositEmail(activeUser.email, activeUser.name, amount, network, txHash, 'Submitted').catch(e => console.warn('Deposit submission email error:', e));
+    } catch (_) {}
   };
 
   // Create withdrawal Request
@@ -971,6 +1036,10 @@ export default function App() {
     setTransactionsList(prev => [newTx, ...prev]);
     saveTransactionToFirebase(newTx);
     addSystemLog('Large_Withdrawal', `Withdrawal claim of $${amount} USDT submitted by ${activeUser.email}. Net payout $${netPayout} after 20% fee.`, 'Secure');
+
+    try {
+      sendWithdrawalEmail(activeUser.email, activeUser.name, amount, network, address, 'Submitted').catch(e => console.warn('Withdrawal submission email error:', e));
+    } catch (_) {}
   };
 
   // Buy fractional shares
@@ -1169,6 +1238,15 @@ export default function App() {
     if (extraTxs.length > 0) {
       addSystemLog('Register_Referral', `Dual 10% First Deposit Referral Bonus activated for ${matchedTx.userEmail} & sponsor!`, 'Secure');
     }
+
+    // Dispatch approval email to investor
+    try {
+      if (matchedTx.type === 'Deposit') {
+        sendDepositEmail(userObj.email, userObj.name, matchedTx.amount, matchedTx.network || 'TRC20', matchedTx.txHash || '', 'Approved').catch(e => console.warn('Deposit approve email error:', e));
+      } else if (matchedTx.type === 'Withdrawal') {
+        sendWithdrawalEmail(userObj.email, userObj.name, matchedTx.amount, matchedTx.network || 'TRC20', matchedTx.walletAddress || '', 'Approved').catch(e => console.warn('Withdrawal approve email error:', e));
+      }
+    } catch (_) {}
   };
 
   const handleRejectTransaction = (txId: string) => {
@@ -1207,6 +1285,18 @@ export default function App() {
       setUsersListState(updatedUsers);
     }
 
+    // Dispatch rejection notification email
+    const userObj = usersListState.find(u => u.id === matchedTx.userId);
+    if (userObj) {
+      try {
+        if (matchedTx.type === 'Deposit') {
+          sendDepositEmail(userObj.email, userObj.name, matchedTx.amount, matchedTx.network || 'TRC20', matchedTx.txHash || '', 'Rejected').catch(e => console.warn('Deposit reject email error:', e));
+        } else if (matchedTx.type === 'Withdrawal') {
+          sendWithdrawalEmail(userObj.email, userObj.name, matchedTx.amount, matchedTx.network || 'TRC20', matchedTx.walletAddress || '', 'Rejected').catch(e => console.warn('Withdrawal reject email error:', e));
+        }
+      } catch (_) {}
+    }
+
     addSystemLog('Admin_Action', `${matchedTx.type} ID ${txId} rejected by compliance admin under UK Companies House & FCA compliance guidelines.`, 'Alarm');
   };
 
@@ -1238,7 +1328,7 @@ export default function App() {
   const handleUnbindUserWallet = (userId: string, network: 'TRC20' | 'BEP20' | 'both') => {
     setUsersListState(prev => prev.map(u => {
       if (u.id === userId) {
-        const updatedWallet = { ...u.wallet };
+        const updatedWallet = { ...(u.wallet || { usdtTrc20Address: '', usdtBep20Address: '', isVerified: false }) };
         if (network === 'TRC20' || network === 'both') {
           updatedWallet.usdtTrc20Address = '';
         }
@@ -1268,16 +1358,40 @@ export default function App() {
     addSystemLog('Admin_Action', `Compliance Admin reset/unbound ${network} wallet address for ${userEmail}.`, 'Secure');
   };
 
-  // Delete User permanently from Firestore
+  // Delete User permanently from Firestore & Local Storage
   const handleDeleteUser = async (userId: string) => {
-    setUsersListState(prev => prev.filter(u => u.id !== userId));
-    if (activeUser && activeUser.id === userId) {
+    const targetUser = usersListState.find(u => u.id === userId);
+    const targetEmail = targetUser?.email ? targetUser.email.trim().toLowerCase() : '';
+
+    // Record deleted ID and Email locally to prevent ghost resurfacing
+    try {
+      const deletedIds: string[] = JSON.parse(localStorage.getItem('inv_deleted_user_ids') || '[]');
+      if (!deletedIds.includes(userId)) deletedIds.push(userId);
+      localStorage.setItem('inv_deleted_user_ids', JSON.stringify(deletedIds));
+
+      if (targetEmail) {
+        const deletedEmails: string[] = JSON.parse(localStorage.getItem('inv_deleted_user_emails') || '[]');
+        if (!deletedEmails.includes(targetEmail)) deletedEmails.push(targetEmail);
+        localStorage.setItem('inv_deleted_user_emails', JSON.stringify(deletedEmails));
+      }
+    } catch (_) {}
+
+    setUsersListState(prev => {
+      const updated = prev.filter(u => u.id !== userId && (targetEmail ? u.email.trim().toLowerCase() !== targetEmail : true));
+      safeSetLocalStorage('inv_users', JSON.stringify(updated));
+      return updated;
+    });
+
+    if (activeUser && (activeUser.id === userId || (targetEmail && activeUser.email.trim().toLowerCase() === targetEmail))) {
       setActiveUser(null);
+      localStorage.removeItem('inv_active_user');
+      safeSetLocalStorage('inv_active_user', '');
     }
+
     if (isFirebaseEnabled()) {
-      await deleteUserFromFirebase(userId);
+      await deleteUserFromFirebase(userId, targetEmail);
     }
-    addSystemLog('Admin_Action', `User account ${userId} permanently deleted from database.`, 'Secure');
+    addSystemLog('Admin_Action', `User account ${targetEmail || userId} permanently deleted from database.`, 'Secure');
   };
 
   // Update Barcode Scanning Gateway / Scan Gate settings
