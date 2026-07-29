@@ -3,6 +3,7 @@ import path from "path";
 import dotenv from "dotenv";
 import nodemailer from "nodemailer";
 import { GoogleGenAI, Type } from "@google/genai";
+import { Readable } from "stream";
 
 // Load environment variables from .env
 dotenv.config();
@@ -40,6 +41,51 @@ const isValidResendApiKey = (key: string): boolean => {
   const trimmed = key.trim();
   return trimmed.startsWith("re_") && trimmed.length >= 25 && !trimmed.includes("12345678") && !trimmed.includes("your_");
 };
+
+  // APK Proxy & Direct Download Endpoint (Masks GitHub URL under fundora.one domain)
+  const APK_GITHUB_SOURCE_URL = "https://github.com/tajammalrehmat/Fundora-Real-Estate/releases/download/Apk/app-fundora.apk";
+
+  const handleApkDownload = async (req: express.Request, res: express.Response) => {
+    try {
+      console.log(`[APK Download Proxy] Request received from IP: ${req.ip}`);
+
+      res.setHeader("Content-Disposition", 'attachment; filename="app-fundora.apk"');
+      res.setHeader("Content-Type", "application/vnd.android.package-archive");
+      res.setHeader("Cache-Control", "public, max-age=3600");
+
+      const response = await fetch(APK_GITHUB_SOURCE_URL, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        },
+        redirect: "follow"
+      });
+
+      if (!response.ok) {
+        console.error(`[APK Download Proxy] Failed to fetch source APK: ${response.status} ${response.statusText}`);
+        return res.redirect(302, APK_GITHUB_SOURCE_URL);
+      }
+
+      const contentLength = response.headers.get("content-length");
+      if (contentLength) {
+        res.setHeader("Content-Length", contentLength);
+      }
+
+      if (response.body) {
+        const nodeReadable = Readable.fromWeb(response.body as any);
+        nodeReadable.pipe(res);
+      } else {
+        const arrayBuffer = await response.arrayBuffer();
+        res.send(Buffer.from(arrayBuffer));
+      }
+    } catch (err: any) {
+      console.error("[APK Download Proxy Error]", err?.message || err);
+      res.redirect(302, APK_GITHUB_SOURCE_URL);
+    }
+  };
+
+  app.get("/api/download-apk", handleApkDownload);
+  app.get("/download/app-fundora.apk", handleApkDownload);
+  app.get("/app-fundora.apk", handleApkDownload);
 
   // API Route to proxy email requests for generic transactional emails & OTPs
   app.post("/api/send-email", async (req, res) => {

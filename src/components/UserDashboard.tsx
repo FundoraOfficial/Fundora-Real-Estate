@@ -16,7 +16,7 @@ import {
   Building, MapPin, Search, Filter, ShieldCheck, ChevronRight, ChevronLeft, Calculator, CheckCircle2,
   AlertTriangle, Copy, Trash, Upload, Landmark, Sparkles, RefreshCw, X, XCircle, ChevronDown, Award,
   FileText, Plus, User, Lock, Check, Crown, Shield, Download, Printer, ZoomIn, ZoomOut, Eye, EyeOff,
-  ArrowDownLeft, ArrowUpRight, Briefcase, Coins, History, ListFilter, Calendar, Fingerprint
+  ArrowDownLeft, ArrowUpRight, Briefcase, Coins, History, ListFilter, Calendar, Fingerprint, Smartphone
 } from 'lucide-react';
 
 interface UserDashboardProps {
@@ -1564,6 +1564,17 @@ export default function UserDashboard({
 
         {/* Sidenav bottom commands */}
         <div className="p-4 border-t border-slate-900 bg-slate-950 space-y-2">
+          <a
+            href="/download/app-fundora.apk"
+            target="_blank"
+            rel="noopener noreferrer"
+            download="app-fundora.apk"
+            className="w-full py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold uppercase rounded-lg tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+          >
+            <Smartphone className="w-3.5 h-3.5" />
+            <span>Download App (APK)</span>
+            <Download className="w-3 h-3" />
+          </a>
           {activeUser.role === 'admin' && (
             <button
               onClick={onNavigateAdmin}

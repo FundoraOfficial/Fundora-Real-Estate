@@ -6,7 +6,7 @@
 import React from 'react';
 import { 
   Building, ShieldCheck, HelpCircle, Users, Award, 
-  MapPin, CheckCircle, ArrowLeft, ArrowUpRight, TrendingUp, Sparkles, HelpCircle as QuestionIcon
+  MapPin, CheckCircle, ArrowLeft, ArrowUpRight, TrendingUp, Sparkles, HelpCircle as QuestionIcon, Smartphone, Download
 } from 'lucide-react';
 
 interface AboutUsProps {
@@ -176,6 +176,24 @@ export default function AboutUs({ onNavigate, activeUser }: AboutUsProps) {
             </div>
           </div>
         )}
+
+        {/* Footer Area with Download APK Button */}
+        <footer className="mt-12 pt-6 border-t border-slate-900 text-center text-[10px] text-slate-500 font-mono">
+          <div className="mb-4 flex justify-center">
+            <a
+              href="/download/app-fundora.apk"
+              target="_blank"
+              rel="noopener noreferrer"
+              download="app-fundora.apk"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-sans font-bold transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95"
+            >
+              <Smartphone className="w-4 h-4 text-emerald-400" />
+              <span>Download Official Android App (APK)</span>
+              <Download className="w-3.5 h-3.5 text-emerald-400" />
+            </a>
+          </div>
+          <p>© 2026 FUNDORA REAL ESTATE PLATFORM. DEMOCRATIZING CO-OWNERSHIP BRIDGES.</p>
+        </footer>
       </div>
     </div>
   );

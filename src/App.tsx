@@ -13,6 +13,7 @@ import GlobalNavbar from './components/GlobalNavbar';
 import BiometricLockScreen from './components/BiometricLockScreen';
 import SplashScreen from './components/SplashScreen';
 import AboutUs from './components/AboutUs';
+import ApkDownloadModal from './components/ApkDownloadModal';
 import { RealEstateProject, Transaction, UserAccount, InvestmentRecord, ProfitClaimRecord, SecurityLog, SystemSettings, Inquiry } from './types';
 import { INITIAL_PROJECTS, INITIAL_USER, INITIAL_ADMIN, INITIAL_TRANSACTIONS, INITIAL_SECURITY_LOGS } from './data';
 import { 
@@ -147,6 +148,9 @@ export default function App() {
       return false;
     }
   });
+
+  const [showApkModal, setShowApkModal] = useState<boolean>(false);
+  const [isNewRegistration, setIsNewRegistration] = useState<boolean>(false);
 
   // Robust URL Hash Routing Sync using Refs to prevent infinite loop / flickering
   const activeUserRef = useRef(activeUser);
@@ -885,7 +889,7 @@ export default function App() {
   };
 
   // Successful Session Login/Register
-  const handleAuthSuccess = (userAccount: UserAccount) => {
+  const handleAuthSuccess = (userAccount: UserAccount, isNewReg?: boolean) => {
     setActiveUser(userAccount);
     setIsAppLocked(false);
 
@@ -905,6 +909,11 @@ export default function App() {
       setCurrentPage('admin');
     } else {
       setCurrentPage('dashboard');
+    }
+
+    if (isNewReg) {
+      setIsNewRegistration(true);
+      setShowApkModal(true);
     }
   };
 
@@ -1905,6 +1914,13 @@ export default function App() {
           currentUser={activeUser}
         />
       )}
+
+      {/* Global APK Download Modal */}
+      <ApkDownloadModal 
+        isOpen={showApkModal} 
+        onClose={() => setShowApkModal(false)} 
+        isNewRegistration={isNewRegistration} 
+      />
     </MobileShell>
     </>
   );

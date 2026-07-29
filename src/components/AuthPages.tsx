@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { NativeBiometric } from 'capacitor-native-biometric';
 import { UserAccount } from '../types';
-import { ShieldAlert, Mail, Lock, User, Key, UserCheck, AlertTriangle, Sparkles, Shield, Loader2, Fingerprint, Eye, EyeOff } from 'lucide-react';
+import { ShieldAlert, Mail, Lock, User, Key, UserCheck, AlertTriangle, Sparkles, Shield, Loader2, Fingerprint, Eye, EyeOff, Smartphone, Download } from 'lucide-react';
 import { sendOtpEmail, sendWelcomeEmail, isEmailServiceConfigured } from '../lib/emailService';
 import { getApiUrl } from '../utils/api';
 import { db } from '../lib/firebase';
@@ -24,7 +24,7 @@ const isProductionOrNative = (): boolean => {
 
 interface AuthPagesProps {
   initialScreen?: 'login' | 'register' | 'forgot' | 'verify' | 'forgot-verify';
-  onAuthSuccess: (user: UserAccount | { id: string; email: string; name: string; role: 'user' | 'admin'; referralCode: string; wallet: any; balance: number; totalDeposited: number; totalWithdrawn: number; totalInvestment: number; totalProfitEarned: number; isEmailVerified: boolean; registrationDate: string; referredBy?: string }) => void;
+  onAuthSuccess: (user: UserAccount | { id: string; email: string; name: string; role: 'user' | 'admin'; referralCode: string; wallet: any; balance: number; totalDeposited: number; totalWithdrawn: number; totalInvestment: number; totalProfitEarned: number; isEmailVerified: boolean; registrationDate: string; referredBy?: string }, isNewRegistration?: boolean) => void;
   onNavigate: (page: 'home' | 'login' | 'register' | 'forgot' | 'dashboard' | 'admin' | 'about', reason?: string) => void;
   usersList: UserAccount[];
   addSystemLog: (type: any, desc: string, status: any) => void;
@@ -920,7 +920,7 @@ export default function AuthPages({ initialScreen = 'login', onAuthSuccess, onNa
     } catch (_) {}
 
     console.log(`${tag} Step 6: Triggering onAuthSuccess callback and logging in user...`);
-    onAuthSuccess(newUser);
+    onAuthSuccess(newUser, true);
   };
 
   const handleForgotPassword = async (e: React.FormEvent) => {
@@ -1740,6 +1740,21 @@ export default function AuthPages({ initialScreen = 'login', onAuthSuccess, onNa
           >
             ← Back to Public Homepage
           </button>
+
+          {/* Download App Footer Button */}
+          <div className="mt-4 pt-3 border-t border-slate-900/80 flex flex-col items-center">
+            <a 
+              href="/download/app-fundora.apk"
+              target="_blank"
+              rel="noopener noreferrer"
+              download="app-fundora.apk"
+              className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/25 rounded-xl text-[11px] font-sans font-bold transition-all cursor-pointer shadow-sm hover:scale-[1.02] active:scale-95"
+            >
+              <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Download Official Mobile App (APK)</span>
+              <Download className="w-3 h-3 text-emerald-400/80" />
+            </a>
+          </div>
         </div>
 
       </div>

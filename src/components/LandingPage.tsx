@@ -9,7 +9,7 @@ import { INITIAL_PROJECTS, FAQS, STATIC_REPORTS } from '../data';
 import { 
   Building, Users, Landmark, Coins, ChevronRight, HelpCircle, 
   MapPin, Clock, FileText, ArrowUpRight, CheckCircle, Shield, Sparkles, MessageCircle, Send, Menu, X, FileCheck,
-  Search, AlertCircle, RefreshCw
+  Search, AlertCircle, RefreshCw, Smartphone, Download
 } from 'lucide-react';
 import fundoraCertificateImg from '../assets/images/fundora_certificate_1782375653209.jpg';
 import { generateReceiptPDF } from '../utils/pdfReceipt';
@@ -969,7 +969,7 @@ export default function LandingPage({
 
       {/* Footer copyright */}
       <footer className="bg-slate-950 pt-6 pb-28 md:py-6 px-4 border-t border-slate-900 text-center text-[10px] text-slate-500 font-mono tracking-wide">
-        <div className="mb-3 flex justify-center gap-4 text-[11px] text-emerald-450 font-sans font-bold">
+        <div className="mb-3 flex justify-center gap-4 text-[11px] text-emerald-450 font-sans font-bold flex-wrap items-center">
           <button 
             onClick={() => onNavigate('about')} 
             className="hover:text-amber-400 transition-colors uppercase tracking-wider cursor-pointer"
@@ -982,6 +982,21 @@ export default function LandingPage({
             className="hover:text-amber-400 transition-colors uppercase tracking-wider"
           >
             Browse Properties
+          </a>
+        </div>
+
+        {/* APK App Download Footer Button */}
+        <div className="my-3.5 flex justify-center">
+          <a
+            href="/download/app-fundora.apk"
+            target="_blank"
+            rel="noopener noreferrer"
+            download="app-fundora.apk"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-500/20 to-teal-500/20 hover:from-emerald-500/30 hover:to-teal-500/30 text-emerald-300 hover:text-emerald-200 border border-emerald-500/35 rounded-xl text-xs font-sans font-bold transition-all cursor-pointer shadow-md hover:scale-105 active:scale-95"
+          >
+            <Smartphone className="w-4 h-4 text-emerald-400" />
+            <span>Download Android App (APK)</span>
+            <Download className="w-3.5 h-3.5 text-emerald-400" />
           </a>
         </div>
         <p>© 2026 FUNDORA REAL ESTATE PLATFORM. DEMOCRATIZING CO-OWNERSHIP BRIDGES.</p>
