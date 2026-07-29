@@ -184,17 +184,12 @@ If you have any questions, contact support at <a href="mailto:fundora.one@gmail.
       }
     }
 
-    // 3. Google Apps Script Webhook (Default for OTP verification delivery)
-    const DEFAULT_GAS_PROXY_URL = "https://script.google.com/macros/s/AKfycbwHF82vYH4JVV0ANbHvi2TSnbw6O8pp3jIT75EYKOxYhezBKk1DDvAb7Ve4EU14t46S9g/exec";
-    const gasProxyUrl = (process.env.VITE_SECURE_PROXY_URL || DEFAULT_GAS_PROXY_URL).trim();
+    // 3. Optional Custom Proxy Webhook (if explicitly configured via VITE_SECURE_PROXY_URL)
+    const gasProxyUrl = (process.env.VITE_SECURE_PROXY_URL || "").trim();
 
     if (gasProxyUrl) {
-      const isDefaultGas = gasProxyUrl.includes("AKfycbwHF82vYH4JVV0ANbHvi2TSnbw6O8pp3jIT75EYKOxYhezBKk1DDvAb7Ve4EU14t46S9g");
-      if (isDefaultGas && !isRealOtp) {
-        console.log(`[Email Server] Skipping default OTP proxy for non-OTP email ("${subject}") to ${toEmail}.`);
-      } else {
-        console.log(`[Email Server] Forwarding "${subject}" to Proxy Webhook (${gasProxyUrl}) for ${toEmail}...`);
-        try {
+      console.log(`[Email Server] Forwarding "${subject}" to Proxy Webhook (${gasProxyUrl}) for ${toEmail}...`);
+      try {
         const proxyBody: Record<string, any> = {
           toEmail,
           recipient: toEmail,
@@ -252,7 +247,6 @@ If you have any questions, contact support at <a href="mailto:fundora.one@gmail.
         }
       } catch (gasErr: any) {
         console.warn("[Email Server] GAS Webhook exception:", gasErr?.message || gasErr);
-      }
       }
     }
 

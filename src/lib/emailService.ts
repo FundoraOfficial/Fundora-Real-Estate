@@ -33,9 +33,8 @@ const RESEND_API_KEY = (import.meta.env.VITE_RESEND_API_KEY || '').trim();
 const RESEND_FROM_EMAIL = (import.meta.env.VITE_RESEND_FROM_EMAIL || 'fundora.one@gmail.com').trim();
 const EMAIL_SERVICE_ACTIVE = (import.meta.env.VITE_EMAIL_SERVICE_ACTIVE || '').trim().toLowerCase() === 'true';
 
-// Secure Custom Proxy (Default Google Apps Script Webhook delivering real-time OTP verification emails)
-const DEFAULT_PROXY_URL = 'https://script.google.com/macros/s/AKfycbwHF82vYH4JVV0ANbHvi2TSnbw6O8pp3jIT75EYKOxYhezBKk1DDvAb7Ve4EU14t46S9g/exec';
-const VITE_SECURE_PROXY_URL = (import.meta.env.VITE_SECURE_PROXY_URL || DEFAULT_PROXY_URL).trim();
+// Secure Custom Proxy (Optional custom proxy webhook if configured via environment variable)
+const VITE_SECURE_PROXY_URL = (import.meta.env.VITE_SECURE_PROXY_URL || '').trim();
 
 /**
  * Checks if any email service (EmailJS, Resend, or Secure Proxy) is properly configured
@@ -137,14 +136,10 @@ export const sendTransactionalEmail = async (params: TransactionalEmailParams): 
     console.warn('[Email Service] Express API /api/send-email unreachable or failed, trying fallback:', err);
   }
 
-  // 2. Secondary Choice: Google Apps Script Proxy Webhook (For client-only environments or static fallbacks)
+  // 2. Secondary Choice: Optional Custom Proxy Webhook (if explicitly configured via VITE_SECURE_PROXY_URL)
   if (VITE_SECURE_PROXY_URL) {
-    const isDefaultGasProxy = VITE_SECURE_PROXY_URL.includes('AKfycbwHF82vYH4JVV0ANbHvi2TSnbw6O8pp3jIT75EYKOxYhezBKk1DDvAb7Ve4EU14t46S9g');
-    if (isDefaultGasProxy && !isRealOtp) {
-      console.log(`[Email Service] Skipping default OTP proxy for non-OTP email ("${subject}") to prevent sending verification emails.`);
-    } else {
-      console.log(`[Email Service] Dispatching "${subject}" to ${toEmail} via Google Apps Script Proxy...`);
-      try {
+    console.log(`[Email Service] Dispatching "${subject}" to ${toEmail} via Custom Proxy...`);
+    try {
       const proxyPayload: Record<string, any> = {
         toEmail,
         recipient: toEmail,
@@ -177,7 +172,6 @@ export const sendTransactionalEmail = async (params: TransactionalEmailParams): 
         proxyPayload.otp_code = cleanOtp;
       }
 
-      // Append query parameters so GAS e.parameter automatically parses code/otp/toEmail even without body parsing
       let targetGasUrl = VITE_SECURE_PROXY_URL;
       if (isRealOtp) {
         const queryParams = new URLSearchParams({
@@ -202,7 +196,6 @@ export const sendTransactionalEmail = async (params: TransactionalEmailParams): 
       }
     } catch (err: any) {
       console.warn('[Email Service] Secure Proxy exception, trying fallback:', err);
-    }
     }
   }
 
