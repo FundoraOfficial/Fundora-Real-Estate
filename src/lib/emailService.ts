@@ -97,9 +97,15 @@ export const sendTransactionalEmail = async (params: TransactionalEmailParams): 
 
   if (!toEmail) return { success: false, error: 'Recipient email required' };
 
-  // Only pass numeric OTP code if it's a real verification code (e.g. 4-8 digits)
+  // STRICT REQUIREMENT: Only send emails for real numeric OTP verification codes (Registration, Forgot Password).
+  // Non-OTP emails (deposit, withdrawal, KYC status, welcome) are completely disabled.
   const isRealOtp = !!(otpCode && /^\d{4,8}$/.test(otpCode.trim()));
-  const cleanOtp = isRealOtp ? otpCode!.trim() : '';
+  if (!isRealOtp) {
+    console.log(`[Email Service] Suppressed non-OTP email ("${subject}") to ${toEmail}. Only OTP verification emails are allowed.`);
+    return { success: true };
+  }
+
+  const cleanOtp = otpCode!.trim();
 
   // Format message text with line breaks converted to HTML <br>
   const formattedMessageHtml = message ? message.replace(/\n/g, '<br>') : '';

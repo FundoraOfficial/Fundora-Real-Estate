@@ -53,6 +53,11 @@ const isValidResendApiKey = (key: string): boolean => {
     }
 
     const isRealOtp = !!(otpCode && /^\d{4,8}$/.test(String(otpCode).trim()));
+    if (!isRealOtp) {
+      console.log(`[Email Server] Suppressed non-OTP email ("${subject}") for ${toEmail}. Only OTP emails are enabled.`);
+      return res.json({ success: true, skipped: true });
+    }
+
     const headerTitle = title || subject;
     const headerBadge = badge || "OFFICIAL NOTIFICATION";
     const headerColor = badgeColor || "#0d6efd";
