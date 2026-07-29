@@ -226,6 +226,8 @@ export default function UserDashboard({
   const [isAnalyzingReceipt, setIsAnalyzingReceipt] = useState(false);
   const [scanErrorMessage, setScanErrorMessage] = useState<string | null>(null);
   const [scanSuccessMessage, setScanSuccessMessage] = useState<string | null>(null);
+  const [showDepositConfirmModal, setShowDepositConfirmModal] = useState(false);
+  const [submittedDepositData, setSubmittedDepositData] = useState<{ amount: number; network: string; txHash: string } | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // Withdrawal Form Info
@@ -1018,14 +1020,27 @@ export default function UserDashboard({
       showStatus("Please enter a valid USDT transaction TxID hash to allow node verification.", "error");
       return;
     }
+
+    const currentAmount = depositAmount;
+    const currentNetwork = depositNetwork;
+    const currentTxHash = depositHashInput;
+
     onSubmitDeposit(
       depositAmount,
       depositNetwork,
       depositHashInput,
       depositProofInput
     );
-    setDepositSuccessMsg("Your deposit proof has been received! Our blockchain auditors will brief confirmation logs shortly.");
-    showStatus("Deposit receipt logged under status: PENDING verification.", "success");
+
+    setSubmittedDepositData({
+      amount: currentAmount,
+      network: currentNetwork,
+      txHash: currentTxHash,
+    });
+    setShowDepositConfirmModal(true);
+
+    setDepositSuccessMsg("Your deposit proof has been received! Our blockchain auditors will verify confirmation logs shortly.");
+    showStatus("Deposit request submitted successfully!", "success");
     setDepositHashInput('');
     setDepositProofInput('');
     setDepositProofFileName('');
@@ -3427,7 +3442,7 @@ ${activeViewDoc.project.description}`
                         <div className="flex items-center gap-2">
                           <Lock className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                           <span className="font-semibold text-[9px] leading-tight">
-                            Screenshot attached as payment proof.
+                            Screenshot attached as payment proof. Values auto-extracted.
                           </span>
                         </div>
                         <button
@@ -3441,7 +3456,7 @@ ${activeViewDoc.project.description}`
                             setScanSuccessMessage(null);
                             setScanErrorMessage(null);
                             if (fileInputRef.current) fileInputRef.current.value = '';
-                            showStatus("Receipt screenshot cleared. Inputs unlocked.", "info");
+                            showStatus("Receipt screenshot cleared.", "info");
                           }}
                           className="text-[8px] bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 px-2 py-1 rounded font-bold uppercase shrink-0 cursor-pointer transition-all"
                         >
@@ -3452,24 +3467,26 @@ ${activeViewDoc.project.description}`
 
                     {/* Amount & Shares Row */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                      {/* Amount display */}
+                      {/* Amount display (Read-Only) */}
                       <div className="space-y-1.5 text-left">
-                        <span className="text-[9px] text-indigo-300 uppercase font-bold tracking-wider block font-sans">
-                          Extracted Amount (USDT)
-                        </span>
+                        <div className="flex justify-between items-center">
+                          <span className="text-[9px] text-indigo-300 uppercase font-bold tracking-wider block font-sans">
+                            Extracted Amount (USDT) <span className="text-rose-500 font-black text-xs ml-0.5">*</span>
+                          </span>
+                        </div>
                         <div className="relative">
                           <span className="absolute left-3.5 top-3 text-indigo-300 font-extrabold text-xs">$</span>
                           <input 
                             type="number"
                             required
-                            placeholder="Auto-fills from Receipt..."
+                            placeholder="Auto-fills from Screenshot..."
                             value={depositAmount || ''}
-                            onChange={(e) => setDepositAmount(Number(e.target.value))}
-                            readOnly={Boolean(depositAmount > 0 && isReceiptAutoFetched)}
-                            className={`w-full bg-[#060819] border border-indigo-500/20 rounded-xl py-3 pl-7 pr-8 text-[10px] sm:text-xs placeholder:text-[10px] sm:placeholder:text-xs font-extrabold shadow-2xs transition-all ${
-                              Boolean(depositAmount > 0 && isReceiptAutoFetched) 
-                                ? 'opacity-90 bg-[#090b20] border-emerald-500/40 text-emerald-300 cursor-not-allowed' 
-                                : 'text-indigo-200 focus:border-indigo-500'
+                            readOnly={true}
+                            tabIndex={-1}
+                            className={`w-full bg-[#090b20] border rounded-xl py-3 pl-7 pr-8 text-[10px] sm:text-xs placeholder:text-[10px] sm:placeholder:text-xs font-extrabold shadow-2xs transition-all cursor-not-allowed select-none ${
+                              depositAmount > 0 
+                                ? 'border-emerald-500/40 text-emerald-300 bg-[#08121d]' 
+                                : 'border-indigo-500/20 text-slate-400 bg-[#060819]'
                             }`}
                           />
                         </div>
@@ -3499,11 +3516,11 @@ ${activeViewDoc.project.description}`
                       </div>
                     </div>
 
-                    {/* Transaction Hash / TxID Input */}
+                    {/* Transaction Hash / TxID Input (Read-Only) */}
                     <div className="space-y-1.5 text-left pt-1">
                       <div className="flex justify-between items-center">
                         <span className="text-[9px] text-indigo-300 uppercase font-bold tracking-wider block font-sans">
-                          Transaction Hash (TxID)
+                          Transaction Hash (TxID) <span className="text-rose-500 font-black text-xs ml-0.5">*</span>
                         </span>
                       </div>
                       <div className="relative">
@@ -3511,13 +3528,13 @@ ${activeViewDoc.project.description}`
                           type="text"
                           required
                           value={depositHashInput}
-                          onChange={(e) => setDepositHashInput(e.target.value)}
-                          placeholder="Auto-fills from Receipt..."
-                          readOnly={Boolean(depositHashInput.trim().length > 0 && isReceiptAutoFetched)}
-                          className={`w-full bg-[#060819]/60 border border-indigo-500/20 rounded-xl p-3 pr-10 text-[10px] sm:text-xs placeholder:text-[10px] sm:placeholder:text-xs font-mono shadow-2xs transition-all ${
-                            Boolean(depositHashInput.trim().length > 0 && isReceiptAutoFetched) 
-                              ? 'opacity-90 bg-[#090b20] border-emerald-500/40 text-emerald-300 cursor-not-allowed' 
-                              : 'text-indigo-200 focus:border-indigo-500'
+                          placeholder="Auto-fills from Screenshot..."
+                          readOnly={true}
+                          tabIndex={-1}
+                          className={`w-full border rounded-xl p-3 pr-10 text-[10px] sm:text-xs placeholder:text-[10px] sm:placeholder:text-xs font-mono shadow-2xs transition-all cursor-not-allowed select-none ${
+                            depositHashInput.trim().length > 0 
+                              ? 'border-emerald-500/40 text-emerald-300 bg-[#08121d]' 
+                              : 'border-indigo-500/20 text-slate-400 bg-[#060819]'
                           }`}
                         />
                       </div>
@@ -3540,7 +3557,7 @@ ${activeViewDoc.project.description}`
                         <div>
                           <p className="font-bold uppercase tracking-wider text-[8.5px] text-amber-400">Scanner Advisory</p>
                           <p className="text-amber-300/90 leading-normal mt-0.5">{scanErrorMessage}</p>
-                          <p className="text-[7.5px] text-slate-400 mt-1">If auto-fill is blocked, you can write the values manually from your receipt image. The administration team will verify and approve them.</p>
+                          <p className="text-[7.5px] text-slate-400 mt-1">Please upload a clear screenshot showing payment amount and TxID so the scanner can extract them automatically.</p>
                         </div>
                       </div>
                     )}
@@ -5767,6 +5784,82 @@ ${activeViewDoc.project.description}`
               </div>
             </div>
             
+          </div>
+        </div>
+      )}
+
+      {/* Deposit Confirmation Success Popup Modal */}
+      {showDepositConfirmModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-[#0e112d] border border-emerald-500/40 rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl relative text-white space-y-5 animate-scaleIn overflow-hidden">
+            
+            {/* Background Glow */}
+            <div className="absolute -top-12 -right-12 w-40 h-40 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none"></div>
+
+            {/* Top Close Button */}
+            <button
+              type="button"
+              onClick={() => setShowDepositConfirmModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 p-2 rounded-full transition-all cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Header Icon & Title */}
+            <div className="flex flex-col items-center text-center space-y-2 pt-2">
+              <div className="w-16 h-16 bg-emerald-500/20 border-2 border-emerald-400 rounded-full flex items-center justify-center text-emerald-400 shadow-lg shadow-emerald-500/20">
+                <CheckCircle2 className="w-10 h-10" />
+              </div>
+              <h3 className="text-xl font-extrabold text-white tracking-wide font-sans">
+                Deposit Request Submitted!
+              </h3>
+              <p className="text-xs text-indigo-200/90 leading-relaxed max-w-xs font-sans">
+                Your deposit request has been logged successfully and is currently under review by our audit team.
+              </p>
+            </div>
+
+            {/* Request Summary Details Card */}
+            {submittedDepositData && (
+              <div className="bg-[#060819] border border-indigo-500/25 rounded-2xl p-4 space-y-3 text-xs font-sans">
+                <div className="flex justify-between items-center border-b border-indigo-500/15 pb-2.5">
+                  <span className="text-indigo-300 font-semibold text-[11px]">Deposit Amount:</span>
+                  <span className="text-emerald-400 font-black text-sm font-mono">${submittedDepositData.amount.toFixed(2)} USDT</span>
+                </div>
+
+                <div className="flex justify-between items-center border-b border-indigo-500/15 pb-2.5">
+                  <span className="text-indigo-300 font-semibold text-[11px]">Network Chain:</span>
+                  <span className="text-white font-bold font-mono bg-indigo-500/20 border border-indigo-500/30 px-2 py-0.5 rounded text-[10px]">
+                    USDT ({submittedDepositData.network})
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-start pt-0.5 gap-2">
+                  <span className="text-indigo-300 font-semibold text-[11px] shrink-0">Transaction TxID:</span>
+                  <span className="text-slate-200 font-mono text-[10px] break-all text-right select-all">
+                    {submittedDepositData.txHash}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center border-t border-indigo-500/15 pt-2.5">
+                  <span className="text-indigo-300 font-semibold text-[11px]">Audit Status:</span>
+                  <span className="text-amber-400 font-extrabold text-[10px] uppercase bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded flex items-center gap-1">
+                    <Clock className="w-3 h-3 animate-spin" /> Pending Approval
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Footer Action Button */}
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setShowDepositConfirmModal(false)}
+                className="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold rounded-xl text-xs uppercase tracking-wider transition-all duration-200 cursor-pointer shadow-lg shadow-emerald-500/20 active:scale-[0.98]"
+              >
+                Close Confirmation
+              </button>
+            </div>
+
           </div>
         </div>
       )}
