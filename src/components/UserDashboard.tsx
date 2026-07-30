@@ -273,9 +273,14 @@ export default function UserDashboard({
   }, []);
 
   const handleToggleNotifPref = (key: keyof NotificationPreferences) => {
-    const updated = { ...notifPrefs, [key]: !notifPrefs[key] };
+    const nextVal = !notifPrefs[key];
+    const updated = { ...notifPrefs, [key]: nextVal };
     setNotifPrefs(updated);
     saveNotificationPreferences(updated);
+
+    if (key === 'masterEnabled' && nextVal) {
+      setShowNotifPermModal(true);
+    }
   };
   const [claimPopup, setClaimPopup] = useState<{
     isOpen: boolean;
@@ -5346,15 +5351,7 @@ ${activeViewDoc.project.description}`
                   </div>
                   <button
                     type="button"
-                    onClick={async () => {
-                      setShowNotifPermModal(true);
-                      const granted = await requestNotificationPermission();
-                      if (granted) {
-                        setNotifStatusMsg({ message: 'Device notification permission granted! Sending test status bar alert...', type: 'success' });
-                        await triggerTestNotification();
-                        setTimeout(() => setNotifStatusMsg(null), 6000);
-                      }
-                    }}
+                    onClick={() => setShowNotifPermModal(true)}
                     className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-[10px] uppercase tracking-wider shrink-0 transition-all cursor-pointer shadow-md"
                   >
                     Enable Permission
