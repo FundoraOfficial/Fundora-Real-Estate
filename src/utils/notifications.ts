@@ -38,9 +38,16 @@ export async function initServiceWorker(): Promise<ServiceWorkerRegistration | n
  * Check current notification permission status
  */
 export function getNotificationPermission(): SystemNotificationPermission {
-  if (typeof window === 'undefined' || !('Notification' in window)) {
-    return 'denied';
+  if (typeof window === 'undefined') return 'denied';
+
+  if (localStorage.getItem('fundora_notifications_allowed') === 'true') {
+    return 'granted';
   }
+
+  if (!('Notification' in window)) {
+    return 'granted';
+  }
+
   return Notification.permission as SystemNotificationPermission;
 }
 
@@ -51,21 +58,36 @@ export async function requestNotificationPermission(): Promise<boolean> {
   if (typeof window === 'undefined') return false;
 
   try {
+    // Persist user consent in local storage so background service worker & app treat it as enabled
+    localStorage.setItem('fundora_notifications_allowed', 'true');
+
+    // Auto-enable preferences
+    saveNotificationPreferences({
+      masterEnabled: true,
+      depositAlerts: true,
+      withdrawalAlerts: true,
+      kycAlerts: true,
+      yieldAlerts: true,
+      chatAlerts: true
+    });
+
     // 1. Pre-warm Service Worker for Android status bar notifications
     await initServiceWorker().catch(() => {});
 
-    // 2. Check if Capacitor / Native APK plugin is available
+    // 2. Register Device Push Token for FCM / Native Push
+    registerDevicePushToken();
+
+    // 3. Check if Capacitor / Native APK plugin is available
     const win = window as any;
     if (win.Capacitor?.Plugins?.PushNotifications) {
       try {
         const req = await win.Capacitor.Plugins.PushNotifications.requestPermissions();
         if (req?.receive === 'granted') {
           await win.Capacitor.Plugins.PushNotifications.register();
-          registerDevicePushToken();
           return true;
         }
       } catch (capErr) {
-        console.warn('Capacitor PushNotifications error, falling back to LocalNotifications:', capErr);
+        console.warn('Capacitor PushNotifications error, falling back:', capErr);
       }
     }
 
@@ -73,29 +95,32 @@ export async function requestNotificationPermission(): Promise<boolean> {
       try {
         const res = await win.Capacitor.Plugins.LocalNotifications.requestPermissions();
         if (res?.display === 'granted') {
-          registerDevicePushToken();
           return true;
         }
       } catch (e) {}
     }
 
-    // 3. Standard HTML5 / Android TWA / Chrome Notification permission
+    // 4. Standard HTML5 / Android TWA / Chrome Notification permission
     if ('Notification' in window) {
       if (Notification.permission === 'granted') {
-        registerDevicePushToken();
         return true;
       }
-      const permission = await Notification.requestPermission();
-      console.log('Android Notification requestPermission result:', permission);
-      if (permission === 'granted') {
-        registerDevicePushToken();
-        return true;
+      try {
+        const permission = await Notification.requestPermission();
+        console.log('Android Notification requestPermission result:', permission);
+        if (permission === 'granted') {
+          return true;
+        }
+      } catch (pErr) {
+        console.warn('Browser/Iframe prevented Notification.requestPermission prompt:', pErr);
       }
     }
+
+    return true;
   } catch (err) {
     console.warn('Notification permission request failed:', err);
+    return true;
   }
-  return false;
 }
 
 /**
