@@ -58,7 +58,8 @@ import {
   requestNotificationPermission, 
   notifyDepositUpdate, 
   notifyWithdrawalUpdate, 
-  notifyKycUpdate 
+  notifyKycUpdate,
+  initServiceWorker
 } from './utils/notifications';
 import InAppNotificationBanner from './components/InAppNotificationBanner';
 
@@ -75,6 +76,10 @@ export default function App() {
   const [showSplash, setShowSplash] = useState<boolean>(true);
   const [isFirebaseSynced, setIsFirebaseSynced] = useState<boolean>(false);
   const isInitialSyncRef = useRef(true);
+
+  useEffect(() => {
+    initServiceWorker().catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (isFirebaseSynced) {

@@ -5301,18 +5301,35 @@ ${activeViewDoc.project.description}`
 
               {/* Permission status alert */}
               {getNotificationPermission() === 'granted' ? (
-                <div className="p-3 bg-emerald-500/10 border border-emerald-500/25 rounded-xl flex items-center gap-2 text-xs text-emerald-400">
-                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
-                  <span className="font-medium">Device & ServiceWorker notifications are enabled and registered.</span>
+                <div className="p-3 bg-emerald-500/10 border border-emerald-500/25 rounded-xl flex items-center justify-between gap-3 text-xs text-emerald-400">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                    <span className="font-medium">Device & ServiceWorker status bar notifications are ENABLED.</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const dispatched = await triggerTestNotification();
+                      if (dispatched) {
+                        setNotifStatusMsg({ message: '🔔 Test alert sent! Pull down your phone top status bar tray to see it.', type: 'success' });
+                      } else {
+                        setNotifStatusMsg({ message: 'Notification sent. If not visible in top bar, check Phone Settings > Notifications for browser.', type: 'info' });
+                      }
+                      setTimeout(() => setNotifStatusMsg(null), 6000);
+                    }}
+                    className="px-3 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-lg text-[10px] font-bold uppercase tracking-wider shrink-0 transition-all cursor-pointer"
+                  >
+                    Test Status Bar
+                  </button>
                 </div>
               ) : (
                 <div className="p-3.5 bg-amber-500/10 border border-amber-500/25 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
                   <div className="flex items-center gap-2 text-amber-300">
                     <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
                     <div>
-                      <span className="font-bold block">Notifications Permission Not Enabled</span>
-                      <span className="text-[10px] text-amber-200/80 font-mono block">
-                        Tap button to enable, or check App Info &gt; Notifications in Android Settings if prompt was blocked.
+                      <span className="font-bold block">Mobile Notification Permission Required</span>
+                      <span className="text-[10px] text-amber-200/90 font-mono block">
+                        Tap "ENABLE PERMISSION" below to allow device status bar alerts. If blocked, tap browser 🔒 lock icon &gt; Site Settings &gt; Allow Notifications.
                       </span>
                     </div>
                   </div>
@@ -5321,11 +5338,15 @@ ${activeViewDoc.project.description}`
                     onClick={async () => {
                       const granted = await requestNotificationPermission();
                       if (granted) {
-                        setNotifStatusMsg({ message: 'Device notification permission granted successfully!', type: 'success' });
+                        setNotifStatusMsg({ message: 'Device notification permission granted! Sending test status bar alert...', type: 'success' });
+                        await triggerTestNotification();
                       } else {
-                        setNotifStatusMsg({ message: 'Requested notification permission. ServiceWorker active with floating alert fallback.', type: 'info' });
+                        setNotifStatusMsg({ 
+                          message: 'Permission not granted yet. Please tap "Allow" in browser prompt, or check Android Phone Settings > App Notifications.', 
+                          type: 'error' 
+                        });
                       }
-                      setTimeout(() => setNotifStatusMsg(null), 5000);
+                      setTimeout(() => setNotifStatusMsg(null), 6000);
                     }}
                     className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-[10px] uppercase tracking-wider shrink-0 transition-all cursor-pointer shadow-md"
                   >

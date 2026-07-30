@@ -51,25 +51,24 @@ export async function requestNotificationPermission(): Promise<boolean> {
   if (typeof window === 'undefined') return false;
 
   try {
-    // 1. Initialize Service Worker in background
-    initServiceWorker().catch(() => {});
+    // 1. Pre-warm Service Worker for Android status bar notifications
+    await initServiceWorker().catch(() => {});
 
-    // 2. Check if Capacitor / Native plugin is available
+    // 2. Check if Capacitor / Native APK plugin is available
     const win = window as any;
     if (win.Capacitor?.Plugins?.LocalNotifications) {
       const res = await win.Capacitor.Plugins.LocalNotifications.requestPermissions();
       if (res?.display === 'granted') return true;
     }
 
-    // 3. Standard HTML5 / Android WebView Notification permission
+    // 3. Standard HTML5 / Android WebView / Chrome Notification permission
     if ('Notification' in window) {
       if (Notification.permission === 'granted') {
         return true;
       }
-      if (Notification.permission !== 'denied') {
-        const permission = await Notification.requestPermission();
-        return permission === 'granted';
-      }
+      const permission = await Notification.requestPermission();
+      console.log('Android Notification requestPermission result:', permission);
+      return permission === 'granted';
     }
   } catch (err) {
     console.warn('Notification permission request failed:', err);
@@ -200,11 +199,17 @@ export async function sendSystemNotification(
     return false;
   }
 
+  // Auto-request permission if in 'default' state
+  if ('Notification' in window && Notification.permission === 'default') {
+    await requestNotificationPermission();
+  }
+
   const win = window as any;
-  const icon = options.icon || '/favicon.png';
+  const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+  const iconUrl = options.icon ? (options.icon.startsWith('http') ? options.icon : `${baseUrl}${options.icon}`) : `${baseUrl}/favicon.png`;
   let dispatched = false;
 
-  // Always emit in-app floating system bar banner
+  // Always emit in-app floating banner mirror inside app interface
   dispatchInAppNotification(title, options.body, options.tag);
 
   try {
@@ -227,18 +232,20 @@ export async function sendSystemNotification(
       dispatched = true;
     }
 
-    // 2. Try Service Worker showNotification (Bypasses Android Mobile "Illegal constructor" error!)
-    if (!dispatched && 'serviceWorker' in navigator) {
+    // 2. Try Service Worker showNotification (Places alert in Android top status bar & lockscreen!)
+    if (!dispatched && 'serviceWorker' in navigator && 'Notification' in window && Notification.permission === 'granted') {
       try {
         const reg = await initServiceWorker() || await navigator.serviceWorker.ready;
         if (reg && reg.showNotification) {
           await reg.showNotification(title, {
             body: options.body,
-            icon: icon,
-            badge: '/favicon.png',
+            icon: iconUrl,
+            badge: iconUrl,
             tag: options.tag || `fundora-notif-${Date.now()}`,
             data: options.data,
-            vibrate: options.vibrate || [200, 100, 200]
+            vibrate: options.vibrate || [200, 100, 200],
+            renotify: true,
+            requireInteraction: true
           } as any);
           dispatched = true;
         }
@@ -247,12 +254,12 @@ export async function sendSystemNotification(
       }
     }
 
-    // 3. Fallback to standard Notification constructor (for desktop / supported browsers)
+    // 3. Fallback to standard Notification constructor (for supported desktop/browsers)
     if (!dispatched && 'Notification' in window && Notification.permission === 'granted') {
       try {
         const notif = new Notification(title, {
           body: options.body,
-          icon,
+          icon: iconUrl,
           tag: options.tag || `fundora-notif-${Date.now()}`,
           data: options.data,
           silent: options.silent || false
@@ -271,7 +278,7 @@ export async function sendSystemNotification(
     console.error('Failed to dispatch system notification:', err);
   }
 
-  return true;
+  return dispatched;
 }
 
 /**
@@ -388,11 +395,15 @@ export function notifyCommunityMessage(senderName: string, textSnippet: string) 
 /**
  * Trigger a test notification bar alert
  */
-export function triggerTestNotification(): Promise<boolean> {
+export async function triggerTestNotification(): Promise<boolean> {
+  if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission !== 'granted') {
+    await requestNotificationPermission();
+  }
+
   return sendSystemNotification(`🔔 Fundora Device Notification Test`, {
-    body: `Push notification bar alerts are active and configured correctly on your device!`,
+    body: `Push notification bar alert is active on your device! Check your phone status bar at the top.`,
     tag: `test-${Date.now()}`,
-    vibrate: [100, 50, 100]
+    vibrate: [200, 100, 200]
   });
 }
 
