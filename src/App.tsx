@@ -60,6 +60,7 @@ import {
   notifyWithdrawalUpdate, 
   notifyKycUpdate 
 } from './utils/notifications';
+import InAppNotificationBanner from './components/InAppNotificationBanner';
 
 // Safe localStorage helper to prevent QuotaExceededError crashes with large attachments
 const safeSetLocalStorage = (key: string, value: string) => {
@@ -1872,6 +1873,7 @@ export default function App() {
 
   return (
     <>
+      <InAppNotificationBanner />
       {showSplash && (
         <SplashScreen onFinish={() => setShowSplash(false)} />
       )}

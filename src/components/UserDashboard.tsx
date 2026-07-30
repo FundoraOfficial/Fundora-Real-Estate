@@ -5300,11 +5300,21 @@ ${activeViewDoc.project.description}`
               )}
 
               {/* Permission status alert */}
-              {getNotificationPermission() !== 'granted' && (
-                <div className="p-3.5 bg-amber-500/10 border border-amber-500/25 rounded-xl flex items-center justify-between gap-3 text-xs">
+              {getNotificationPermission() === 'granted' ? (
+                <div className="p-3 bg-emerald-500/10 border border-emerald-500/25 rounded-xl flex items-center gap-2 text-xs text-emerald-400">
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                  <span className="font-medium">Device & ServiceWorker notifications are enabled and registered.</span>
+                </div>
+              ) : (
+                <div className="p-3.5 bg-amber-500/10 border border-amber-500/25 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
                   <div className="flex items-center gap-2 text-amber-300">
                     <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
-                    <span>Device notifications permission is not currently enabled in browser.</span>
+                    <div>
+                      <span className="font-bold block">Notifications Permission Not Enabled</span>
+                      <span className="text-[10px] text-amber-200/80 font-mono block">
+                        Tap button to enable, or check App Info &gt; Notifications in Android Settings if prompt was blocked.
+                      </span>
+                    </div>
                   </div>
                   <button
                     type="button"
@@ -5313,11 +5323,11 @@ ${activeViewDoc.project.description}`
                       if (granted) {
                         setNotifStatusMsg({ message: 'Device notification permission granted successfully!', type: 'success' });
                       } else {
-                        setNotifStatusMsg({ message: 'Permission requested. Please allow notifications in system prompt.', type: 'info' });
+                        setNotifStatusMsg({ message: 'Requested notification permission. ServiceWorker active with floating alert fallback.', type: 'info' });
                       }
-                      setTimeout(() => setNotifStatusMsg(null), 4000);
+                      setTimeout(() => setNotifStatusMsg(null), 5000);
                     }}
-                    className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-[10px] uppercase tracking-wider shrink-0 transition-all cursor-pointer"
+                    className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-[10px] uppercase tracking-wider shrink-0 transition-all cursor-pointer shadow-md"
                   >
                     Enable Permission
                   </button>

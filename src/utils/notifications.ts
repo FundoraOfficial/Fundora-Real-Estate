@@ -8,6 +8,32 @@ import { isNativeAppContainer } from './nativeApp';
 
 export type SystemNotificationPermission = 'granted' | 'denied' | 'default';
 
+let swRegistrationPromise: Promise<ServiceWorkerRegistration | null> | null = null;
+
+/**
+ * Register Service Worker for persistent Android mobile notifications
+ */
+export async function initServiceWorker(): Promise<ServiceWorkerRegistration | null> {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
+    return null;
+  }
+
+  if (swRegistrationPromise) return swRegistrationPromise;
+
+  swRegistrationPromise = (async () => {
+    try {
+      const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+      console.log('ServiceWorker registered successfully for Fundora notifications:', reg.scope);
+      return reg;
+    } catch (err) {
+      console.warn('ServiceWorker registration failed, using fallback:', err);
+      return null;
+    }
+  })();
+
+  return swRegistrationPromise;
+}
+
 /**
  * Check current notification permission status
  */
@@ -25,14 +51,17 @@ export async function requestNotificationPermission(): Promise<boolean> {
   if (typeof window === 'undefined') return false;
 
   try {
-    // Check if Capacitor / Native plugin is available
+    // 1. Initialize Service Worker in background
+    initServiceWorker().catch(() => {});
+
+    // 2. Check if Capacitor / Native plugin is available
     const win = window as any;
     if (win.Capacitor?.Plugins?.LocalNotifications) {
       const res = await win.Capacitor.Plugins.LocalNotifications.requestPermissions();
       if (res?.display === 'granted') return true;
     }
 
-    // Standard HTML5 / Android WebView Notification permission
+    // 3. Standard HTML5 / Android WebView Notification permission
     if ('Notification' in window) {
       if (Notification.permission === 'granted') {
         return true;
@@ -103,6 +132,59 @@ export interface CustomNotificationOptions {
   silent?: boolean;
 }
 
+export interface InAppNotifItem {
+  id: string;
+  title: string;
+  body: string;
+  timestamp: string;
+  tag?: string;
+}
+
+type InAppListener = (notif: InAppNotifItem) => void;
+const inAppListeners: Set<InAppListener> = new Set();
+
+export function subscribeInAppNotifications(listener: InAppListener): () => void {
+  inAppListeners.add(listener);
+  return () => {
+    inAppListeners.delete(listener);
+  };
+}
+
+export function dispatchInAppNotification(title: string, body: string, tag?: string) {
+  const item: InAppNotifItem = {
+    id: `inapp-${Date.now()}-${Math.random()}`,
+    title,
+    body,
+    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    tag
+  };
+
+  // Trigger device haptic vibration if supported
+  if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+    try {
+      navigator.vibrate([200, 100, 200]);
+    } catch (e) {}
+  }
+
+  // Play subtle chime sound
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15); // A5
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.35);
+  } catch (e) {}
+
+  inAppListeners.forEach(listener => listener(item));
+}
+
 /**
  * Trigger a native notification bar alert on Mobile APK / Desktop / Browser
  */
@@ -119,7 +201,11 @@ export async function sendSystemNotification(
   }
 
   const win = window as any;
-  const icon = options.icon || '/favicon.ico';
+  const icon = options.icon || '/favicon.png';
+  let dispatched = false;
+
+  // Always emit in-app floating system bar banner
+  dispatchInAppNotification(title, options.body, options.tag);
 
   try {
     // 1. Try Capacitor Native LocalNotifications first if in APK shell
@@ -138,40 +224,54 @@ export async function sendSystemNotification(
           }
         ]
       });
-      return true;
+      dispatched = true;
     }
 
-    // 2. Try Standard Web / Android WebView Notification API
-    if ('Notification' in window && Notification.permission === 'granted') {
-      // Create native system notification
-      const notif = new Notification(title, {
-        body: options.body,
-        icon,
-        tag: options.tag || `fundora-notif-${Date.now()}`,
-        data: options.data,
-        silent: options.silent || false
-      });
-
-      // Play subtle notification audio feedback if available
+    // 2. Try Service Worker showNotification (Bypasses Android Mobile "Illegal constructor" error!)
+    if (!dispatched && 'serviceWorker' in navigator) {
       try {
-        const audio = new Audio('/notification.mp3');
-        audio.volume = 0.5;
-        audio.play().catch(() => {});
-      } catch (e) {
-        // Audio optional
+        const reg = await initServiceWorker() || await navigator.serviceWorker.ready;
+        if (reg && reg.showNotification) {
+          await reg.showNotification(title, {
+            body: options.body,
+            icon: icon,
+            badge: '/favicon.png',
+            tag: options.tag || `fundora-notif-${Date.now()}`,
+            data: options.data,
+            vibrate: options.vibrate || [200, 100, 200]
+          } as any);
+          dispatched = true;
+        }
+      } catch (swErr) {
+        console.warn('ServiceWorker showNotification error:', swErr);
       }
+    }
 
-      notif.onclick = function() {
-        window.focus();
-        notif.close();
-      };
-      return true;
+    // 3. Fallback to standard Notification constructor (for desktop / supported browsers)
+    if (!dispatched && 'Notification' in window && Notification.permission === 'granted') {
+      try {
+        const notif = new Notification(title, {
+          body: options.body,
+          icon,
+          tag: options.tag || `fundora-notif-${Date.now()}`,
+          data: options.data,
+          silent: options.silent || false
+        } as any);
+
+        notif.onclick = function() {
+          window.focus();
+          notif.close();
+        };
+        dispatched = true;
+      } catch (notifErr) {
+        console.warn('Standard Notification constructor failed (expected on Android mobile):', notifErr);
+      }
     }
   } catch (err) {
     console.error('Failed to dispatch system notification:', err);
   }
 
-  return false;
+  return true;
 }
 
 /**
@@ -295,3 +395,4 @@ export function triggerTestNotification(): Promise<boolean> {
     vibrate: [100, 50, 100]
   });
 }
+
