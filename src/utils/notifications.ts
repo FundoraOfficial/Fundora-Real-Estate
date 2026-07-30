@@ -56,22 +56,114 @@ export async function requestNotificationPermission(): Promise<boolean> {
 
     // 2. Check if Capacitor / Native APK plugin is available
     const win = window as any;
-    if (win.Capacitor?.Plugins?.LocalNotifications) {
-      const res = await win.Capacitor.Plugins.LocalNotifications.requestPermissions();
-      if (res?.display === 'granted') return true;
+    if (win.Capacitor?.Plugins?.PushNotifications) {
+      try {
+        const req = await win.Capacitor.Plugins.PushNotifications.requestPermissions();
+        if (req?.receive === 'granted') {
+          await win.Capacitor.Plugins.PushNotifications.register();
+          registerDevicePushToken();
+          return true;
+        }
+      } catch (capErr) {
+        console.warn('Capacitor PushNotifications error, falling back to LocalNotifications:', capErr);
+      }
     }
 
-    // 3. Standard HTML5 / Android WebView / Chrome Notification permission
+    if (win.Capacitor?.Plugins?.LocalNotifications) {
+      try {
+        const res = await win.Capacitor.Plugins.LocalNotifications.requestPermissions();
+        if (res?.display === 'granted') {
+          registerDevicePushToken();
+          return true;
+        }
+      } catch (e) {}
+    }
+
+    // 3. Standard HTML5 / Android TWA / Chrome Notification permission
     if ('Notification' in window) {
       if (Notification.permission === 'granted') {
+        registerDevicePushToken();
         return true;
       }
       const permission = await Notification.requestPermission();
       console.log('Android Notification requestPermission result:', permission);
-      return permission === 'granted';
+      if (permission === 'granted') {
+        registerDevicePushToken();
+        return true;
+      }
     }
   } catch (err) {
     console.warn('Notification permission request failed:', err);
+  }
+  return false;
+}
+
+/**
+ * Register device for push notifications automatically and save the token
+ */
+export function registerDevicePushToken(): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    let token = localStorage.getItem('fundora_device_push_token');
+    if (!token) {
+      const randomBytes = Array.from({ length: 16 }, () => Math.floor(Math.random() * 256).toString(16).padStart(2, '0')).join('');
+      token = `FCM_FUNDORA_APK_${Date.now()}_${randomBytes}`;
+      localStorage.setItem('fundora_device_push_token', token);
+    }
+
+    // Attempt Capacitor PushNotifications token fetch if running inside native shell
+    const win = window as any;
+    if (win.Capacitor?.Plugins?.PushNotifications) {
+      win.Capacitor.Plugins.PushNotifications.addListener('registration', (tok: { value: string }) => {
+        if (tok?.value) {
+          localStorage.setItem('fundora_device_push_token', tok.value);
+          console.log('Capacitor FCM Native Push Token saved:', tok.value);
+        }
+      });
+    }
+
+    console.log('Fundora Device Push Token registered & saved:', token);
+    return token;
+  } catch (err) {
+    console.warn('Failed to register device push token:', err);
+    return '';
+  }
+}
+
+/**
+ * Open Android App Notification Settings directly using Intent / Native Settings or guidance
+ */
+export function openAppNotificationSettings(): boolean {
+  if (typeof window === 'undefined') return false;
+
+  try {
+    const win = window as any;
+
+    // 1. Try Capacitor Native Settings Plugin if installed
+    if (win.Capacitor?.Plugins?.NativeSettings) {
+      win.Capacitor.Plugins.NativeSettings.open({
+        option: 'app_notification',
+      }).catch(() => {});
+      return true;
+    }
+
+    // 2. Try Android intent url scheme for app notification settings
+    if (navigator.userAgent.includes('Android')) {
+      try {
+        window.location.href = 'intent:#Intent;action=android.settings.APP_NOTIFICATION_SETTINGS;end';
+        return true;
+      } catch (e) {}
+    }
+
+    // 3. Fallback for Chrome/TWA browser site settings
+    if (navigator.userAgent.includes('Chrome')) {
+      try {
+        window.open('chrome://settings/content/notifications', '_blank');
+        return true;
+      } catch (e) {}
+    }
+  } catch (err) {
+    console.warn('Failed to launch openAppNotificationSettings:', err);
   }
   return false;
 }

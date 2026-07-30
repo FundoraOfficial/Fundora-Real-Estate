@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, CheckCircle2, AlertTriangle, Send } from 'lucide-react';
+import { Bell, CheckCircle2, Settings, Smartphone } from 'lucide-react';
 import { 
   getNotificationPermission, 
   requestNotificationPermission, 
   triggerTestNotification, 
-  saveNotificationPreferences 
+  saveNotificationPreferences,
+  openAppNotificationSettings
 } from '../utils/notifications';
 
 interface Props {
@@ -31,12 +32,10 @@ export default function NotificationPermissionModal({ isOpen, onClose, onPermiss
     setIsRequesting(true);
     setFeedbackMsg(null);
     try {
-      // Trigger system permission prompt (HTML5 / Android WebView / Capacitor)
       const granted = await requestNotificationPermission();
       const newPerm = getNotificationPermission();
       setCurrentStatus(newPerm);
 
-      // Auto enable all notification preferences
       saveNotificationPreferences({
         masterEnabled: true,
         depositAlerts: true,
@@ -48,36 +47,41 @@ export default function NotificationPermissionModal({ isOpen, onClose, onPermiss
 
       if (granted || newPerm === 'granted') {
         if (onPermissionChange) onPermissionChange(true);
-        setFeedbackMsg('✅ Notification permission granted!');
-        
-        // Immediately fire test notification so user sees it in top bar
+        setFeedbackMsg('✅ Device Notification Permission Granted!');
         await triggerTestNotification();
-        
         setTimeout(() => {
           onClose();
         }, 1800);
       } else {
-        // Fallback info if browser blocked prompt
-        setFeedbackMsg('⚠️ Browser prompt blocked. If not prompt appeared, tap browser 🔒 lock icon > Allow Notifications.');
+        setFeedbackMsg('⚠️ Permission not granted yet. Tap "Open App Notification Settings" below to allow.');
         if (onPermissionChange) onPermissionChange(false);
       }
     } catch (err) {
       console.warn('Permission request error:', err);
-      setFeedbackMsg('⚠️ Unable to trigger prompt. Please enable in device settings.');
+      setFeedbackMsg('⚠️ Unable to trigger prompt. Please tap "Open App Notification Settings".');
     } finally {
       setIsRequesting(false);
     }
   };
 
-  const handleDontAllowClick = () => {
+  const handleOpenSettingsClick = () => {
+    const opened = openAppNotificationSettings();
+    if (opened) {
+      setFeedbackMsg('Opening App Notification Settings...');
+    } else {
+      setFeedbackMsg('Please open Android Phone Settings > Apps > Fundora > Notifications > Turn ON.');
+    }
+  };
+
+  const handleMaybeLaterClick = () => {
     if (onPermissionChange) onPermissionChange(false);
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fadeIn">
-      {/* Android System Style Permission Dialog Container */}
-      <div className="bg-[#f2f4fc] dark:bg-[#1a1c2e] text-slate-900 dark:text-white w-full max-w-[340px] rounded-[32px] p-6 shadow-[0_25px_60px_rgba(0,0,0,0.6)] border border-white/50 dark:border-indigo-500/30 relative overflow-hidden text-center space-y-5 animate-scaleUp">
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm animate-fadeIn">
+      {/* Native Android Style Permission Dialog Box */}
+      <div className="bg-[#f4f6fd] dark:bg-[#181a2e] text-slate-900 dark:text-white w-full max-w-[340px] rounded-[32px] p-6 shadow-[0_25px_60px_rgba(0,0,0,0.7)] border border-white/60 dark:border-indigo-500/30 relative overflow-hidden text-center space-y-4 animate-scaleUp">
         
         {/* Top Bell Icon */}
         <div className="flex justify-center pt-1">
@@ -86,13 +90,13 @@ export default function NotificationPermissionModal({ isOpen, onClose, onPermiss
           </div>
         </div>
 
-        {/* System Permission Text */}
+        {/* System Rationale & Permission Text */}
         <div className="space-y-1.5 px-1">
           <h3 className="text-base font-semibold leading-snug font-sans text-slate-900 dark:text-white">
             Allow <span className="font-bold text-indigo-950 dark:text-indigo-300">Fundora APK App</span> to send you notifications?
           </h3>
-          <p className="text-[11px] text-slate-600 dark:text-slate-300 font-sans">
-            Get mobile device status bar alerts for deposits, withdrawals, KYC approvals, and daily rental yields.
+          <p className="text-[11px] text-slate-600 dark:text-slate-300 font-sans leading-relaxed">
+            Get instant device status bar alerts for deposits, withdrawal payouts, KYC approvals, and daily rental yields.
           </p>
         </div>
 
@@ -104,29 +108,35 @@ export default function NotificationPermissionModal({ isOpen, onClose, onPermiss
           </div>
         )}
 
-        {/* Native Android Style Action Buttons Stack */}
-        <div className="space-y-2.5 pt-1">
-          {/* Allow Button */}
+        {/* Action Buttons Stack */}
+        <div className="space-y-2 pt-1">
+          {/* 1. Allow Button */}
           <button
             type="button"
             disabled={isRequesting}
             onClick={handleAllowClick}
-            className="w-full py-3.5 bg-[#d8e2ff] hover:bg-[#c3d3ff] dark:bg-indigo-600 dark:hover:bg-indigo-500 text-[#001945] dark:text-white font-bold text-sm rounded-full transition-all shadow-md active:scale-[0.98] cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+            className="w-full py-3.5 bg-[#2b56cb] hover:bg-[#2045ab] dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white font-bold text-sm rounded-full transition-all shadow-md active:scale-[0.98] cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
           >
-            {isRequesting ? (
-              <span>Requesting...</span>
-            ) : (
-              <span>Allow</span>
-            )}
+            {isRequesting ? <span>Requesting Permission...</span> : <span>Allow</span>}
           </button>
 
-          {/* Don't allow Button */}
+          {/* 2. Open App Notification Settings Button */}
           <button
             type="button"
-            onClick={handleDontAllowClick}
-            className="w-full py-3.5 bg-[#e8edf9] hover:bg-[#dbe3f5] dark:bg-slate-800 dark:hover:bg-slate-700 text-[#3b4760] dark:text-slate-300 font-semibold text-sm rounded-full transition-all active:scale-[0.98] cursor-pointer"
+            onClick={handleOpenSettingsClick}
+            className="w-full py-3 bg-[#e4ebfd] hover:bg-[#d8e3fd] dark:bg-indigo-950/70 dark:hover:bg-indigo-900/70 text-[#1b3a82] dark:text-indigo-200 font-bold text-xs rounded-full transition-all active:scale-[0.98] cursor-pointer border border-indigo-200 dark:border-indigo-800 flex items-center justify-center gap-1.5"
           >
-            Don't allow
+            <Settings className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+            <span>Open App Notification Settings</span>
+          </button>
+
+          {/* 3. Maybe Later Button */}
+          <button
+            type="button"
+            onClick={handleMaybeLaterClick}
+            className="w-full py-2.5 text-[#54627a] dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-medium text-xs rounded-full transition-all cursor-pointer"
+          >
+            Maybe Later
           </button>
         </div>
 
