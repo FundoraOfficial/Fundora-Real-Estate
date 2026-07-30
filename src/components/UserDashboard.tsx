@@ -27,6 +27,7 @@ import {
   getNotificationPermission,
   NotificationPreferences 
 } from '../utils/notifications';
+import NotificationPermissionModal from './NotificationPermissionModal';
 
 interface UserDashboardProps {
   activeUser: UserAccount;
@@ -260,6 +261,16 @@ export default function UserDashboard({
   // Notification Preferences State
   const [notifPrefs, setNotifPrefs] = useState<NotificationPreferences>(getNotificationPreferences());
   const [notifStatusMsg, setNotifStatusMsg] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
+  const [showNotifPermModal, setShowNotifPermModal] = useState<boolean>(false);
+
+  React.useEffect(() => {
+    if (getNotificationPermission() === 'default' && !sessionStorage.getItem('fundora_notif_modal_dismissed')) {
+      const timer = setTimeout(() => {
+        setShowNotifPermModal(true);
+      }, 1200);
+      return () => clearTimeout(timer);
+    }
+  }, []);
 
   const handleToggleNotifPref = (key: keyof NotificationPreferences) => {
     const updated = { ...notifPrefs, [key]: !notifPrefs[key] };
@@ -5336,17 +5347,13 @@ ${activeViewDoc.project.description}`
                   <button
                     type="button"
                     onClick={async () => {
+                      setShowNotifPermModal(true);
                       const granted = await requestNotificationPermission();
                       if (granted) {
                         setNotifStatusMsg({ message: 'Device notification permission granted! Sending test status bar alert...', type: 'success' });
                         await triggerTestNotification();
-                      } else {
-                        setNotifStatusMsg({ 
-                          message: 'Permission not granted yet. Please tap "Allow" in browser prompt, or check Android Phone Settings > App Notifications.', 
-                          type: 'error' 
-                        });
+                        setTimeout(() => setNotifStatusMsg(null), 6000);
                       }
-                      setTimeout(() => setNotifStatusMsg(null), 6000);
                     }}
                     className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-[10px] uppercase tracking-wider shrink-0 transition-all cursor-pointer shadow-md"
                   >
@@ -6139,6 +6146,15 @@ ${activeViewDoc.project.description}`
           </div>
         </div>
       )}
+
+      {/* Mobile Device Notification Permission Modal */}
+      <NotificationPermissionModal
+        isOpen={showNotifPermModal}
+        onClose={() => {
+          setShowNotifPermModal(false);
+          sessionStorage.setItem('fundora_notif_modal_dismissed', 'true');
+        }}
+      />
 
       </div>
 
