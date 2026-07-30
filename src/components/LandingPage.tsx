@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import fundoraCertificateImg from '../assets/images/fundora_certificate_1782375653209.jpg';
 import { generateReceiptPDF } from '../utils/pdfReceipt';
+import { isNativeAppContainer } from '../utils/nativeApp';
 
 interface LandingPageProps {
   onNavigate: (page: 'home' | 'login' | 'register' | 'forgot' | 'dashboard' | 'admin' | 'about', reason?: string) => void;
@@ -986,19 +987,21 @@ export default function LandingPage({
         </div>
 
         {/* APK App Download Footer Button */}
-        <div className="my-3.5 flex justify-center">
-          <a
-            href="/download/app-fundora.apk"
-            target="_blank"
-            rel="noopener noreferrer"
-            download="app-fundora.apk"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-500/20 to-teal-500/20 hover:from-emerald-500/30 hover:to-teal-500/30 text-emerald-300 hover:text-emerald-200 border border-emerald-500/35 rounded-xl text-xs font-sans font-bold transition-all cursor-pointer shadow-md hover:scale-105 active:scale-95"
-          >
-            <Smartphone className="w-4 h-4 text-emerald-400" />
-            <span>Download Android App (APK)</span>
-            <Download className="w-3.5 h-3.5 text-emerald-400" />
-          </a>
-        </div>
+        {!isNativeAppContainer() && (
+          <div className="my-3.5 flex justify-center">
+            <a
+              href="/download/app-fundora.apk"
+              target="_blank"
+              rel="noopener noreferrer"
+              download="app-fundora.apk"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-500/20 to-teal-500/20 hover:from-emerald-500/30 hover:to-teal-500/30 text-emerald-300 hover:text-emerald-200 border border-emerald-500/35 rounded-xl text-xs font-sans font-bold transition-all cursor-pointer shadow-md hover:scale-105 active:scale-95"
+            >
+              <Smartphone className="w-4 h-4 text-emerald-400" />
+              <span>Download Android App (APK)</span>
+              <Download className="w-3.5 h-3.5 text-emerald-400" />
+            </a>
+          </div>
+        )}
         <p>© 2026 FUNDORA REAL ESTATE PLATFORM. DEMOCRATIZING CO-OWNERSHIP BRIDGES.</p>
         <p className="mt-1 text-slate-600">Strictly registered with Companies House, United Kingdom (Company No. 16870956) & operating under automated smart compliance triggers.</p>
       </footer>

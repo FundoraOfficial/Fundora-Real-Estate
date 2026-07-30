@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { Smartphone, Download, CheckCircle2, X, Sparkles, AlertCircle } from 'lucide-react';
+import { isNativeAppContainer } from '../utils/nativeApp';
 
 export const APK_DOWNLOAD_URL = "/download/app-fundora.apk";
 
@@ -15,7 +16,7 @@ interface ApkDownloadModalProps {
 }
 
 export default function ApkDownloadModal({ isOpen, onClose, isNewRegistration }: ApkDownloadModalProps) {
-  if (!isOpen) return null;
+  if (!isOpen || isNativeAppContainer()) return null;
 
   return (
     <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-[300] flex items-center justify-center p-4 animate-fadeIn">

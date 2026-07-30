@@ -294,3 +294,118 @@ export interface Inquiry {
   status: 'Pending' | 'Resolved';
 }
 
+// Community & AI Platform Types
+export type ChannelType = 'public' | 'private' | 'dm' | 'announcement';
+export type MemberRole = 'Owner' | 'Admin' | 'Moderator' | 'Member';
+
+export interface CommunityChannel {
+  id: string;
+  name: string;
+  type: ChannelType;
+  description?: string;
+  icon?: string;
+  memberCount: number;
+  inviteCode?: string;
+  isLocked?: boolean;
+  createdBy?: string;
+  allowedRoles?: MemberRole[];
+  unreadCount?: number;
+  dmUser?: {
+    id: string;
+    name: string;
+    email: string;
+    avatarUrl?: string;
+    isOnline?: boolean;
+    role?: string;
+  };
+}
+
+export interface PollOption {
+  id: string;
+  text: string;
+  votes: string[]; // array of userIds who voted for this option
+}
+
+export interface PollData {
+  question: string;
+  options: PollOption[];
+  totalVotes: number;
+  closed?: boolean;
+}
+
+export interface ReactionData {
+  emoji: string;
+  users: string[]; // userIds or names
+}
+
+export interface CommunityMessage {
+  id: string;
+  channelId: string;
+  senderId: string;
+  senderName: string;
+  senderEmail: string;
+  senderAvatar?: string;
+  senderRole?: MemberRole | string;
+  text: string;
+  timestamp: string; // ISO or readable
+  replyToId?: string;
+  replyToPreview?: {
+    senderName: string;
+    text: string;
+  };
+  reactions?: Record<string, string[]>; // emoji -> array of userIds
+  poll?: PollData;
+  voiceNoteUrl?: string; // base64 or audio blob url
+  attachmentUrl?: string;
+  attachmentType?: 'image' | 'video' | 'document';
+  attachmentName?: string;
+  isPinned?: boolean;
+  isEdited?: boolean;
+  isAiGenerated?: boolean;
+  isSpamFlagged?: boolean;
+  readBy?: string[]; // userIds
+}
+
+export interface CommunityJoinRequest {
+  id: string;
+  channelId: string;
+  channelName: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  requestedAt: string;
+  status: 'Pending' | 'Approved' | 'Rejected';
+}
+
+export interface AiKnowledgeEntry {
+  id: string;
+  category: string;
+  question: string;
+  answer: string;
+  keywords?: string[];
+  updatedAt: string;
+}
+
+export interface ScheduledBroadcast {
+  id: string;
+  channelId: string;
+  channelName: string;
+  text: string;
+  sendAt: string;
+  interval: 'once' | 'daily' | 'weekly';
+  isSent: boolean;
+  createdBy: string;
+}
+
+export interface UserNotification {
+  id: string;
+  userId: string;
+  title: string;
+  message: string;
+  type: 'deposit' | 'withdrawal' | 'investment' | 'profit' | 'community' | 'referral' | 'system';
+  date: string;
+  read: boolean;
+  link?: string;
+}
+
+

@@ -149,6 +149,105 @@
         "status": { "type": "string" }
       },
       "required": ["id", "name", "email", "message", "timestamp", "status"]
+    },
+    "CommunityChannel": {
+      "title": "CommunityChannel",
+      "description": "Public and private investment community chat channels",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "description": { "type": "string" },
+        "icon": { "type": "string" },
+        "memberCount": { "type": "number" },
+        "inviteCode": { "type": "string" },
+        "isLocked": { "type": "boolean" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["id", "name", "type"]
+    },
+    "CommunityMessage": {
+      "title": "CommunityMessage",
+      "description": "Messages posted inside community channels and DMs",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "channelId": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "senderEmail": { "type": "string" },
+        "senderAvatar": { "type": "string" },
+        "senderRole": { "type": "string" },
+        "text": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "replyToId": { "type": "string" },
+        "voiceNoteUrl": { "type": "string" },
+        "attachmentUrl": { "type": "string" },
+        "attachmentType": { "type": "string" },
+        "isPinned": { "type": "boolean" },
+        "isEdited": { "type": "boolean" },
+        "isAiGenerated": { "type": "boolean" }
+      },
+      "required": ["id", "channelId", "senderId", "senderName", "text", "timestamp"]
+    },
+    "CommunityJoinRequest": {
+      "title": "CommunityJoinRequest",
+      "description": "Pending member join requests for private channels",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "channelId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "requestedAt": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "channelId", "userId", "status"]
+    },
+    "AiKnowledgeBase": {
+      "title": "AiKnowledgeBase",
+      "description": "Fundora custom knowledge articles and Q&A entries for AI assistant",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "category": { "type": "string" },
+        "question": { "type": "string" },
+        "answer": { "type": "string" },
+        "keywords": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "question", "answer"]
+    },
+    "ScheduledMessage": {
+      "title": "ScheduledMessage",
+      "description": "Automated scheduled announcements and AI investment tips",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "channelId": { "type": "string" },
+        "text": { "type": "string" },
+        "sendAt": { "type": "string" },
+        "interval": { "type": "string" },
+        "isSent": { "type": "boolean" }
+      },
+      "required": ["id", "channelId", "text", "sendAt"]
+    },
+    "UserNotification": {
+      "title": "UserNotification",
+      "description": "User in-app notifications and event triggers",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string" },
+        "date": { "type": "string" },
+        "read": { "type": "boolean" }
+      },
+      "required": ["id", "userId", "title", "message", "date"]
     }
   },
   "firestore": {
@@ -183,6 +282,30 @@
     "inquiries": {
       "schema": "Inquiry",
       "description": "Pre-sale and general property inquiries"
+    },
+    "channels": {
+      "schema": "CommunityChannel",
+      "description": "Public and private community channels"
+    },
+    "messages": {
+      "schema": "CommunityMessage",
+      "description": "Community channel messages"
+    },
+    "join_requests": {
+      "schema": "CommunityJoinRequest",
+      "description": "Private channel join requests"
+    },
+    "ai_knowledge": {
+      "schema": "AiKnowledgeBase",
+      "description": "Custom AI assistant knowledge base"
+    },
+    "scheduled_messages": {
+      "schema": "ScheduledMessage",
+      "description": "Scheduled broadcasts and AI tips"
+    },
+    "notifications": {
+      "schema": "UserNotification",
+      "description": "User notifications"
     }
   }
 }

@@ -630,6 +630,260 @@ If you didn't request this verification, simply ignore this email.
     }
   });
 
+  // AI Helper: Get active Gemini client instance
+  const getGeminiClient = (req: express.Request) => {
+    const headerKey = req.headers['x-gemini-key'] as string;
+    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || headerKey || process.env.VITE_GEMINI_API_KEY;
+    if (!apiKey || typeof apiKey !== 'string' || !apiKey.trim()) return null;
+    return new GoogleGenAI({
+      apiKey: apiKey.trim(),
+      httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+    });
+  };
+
+  // Fundora Knowledge Base System Prompt
+  const FUNDORA_SYSTEM_PROMPT = `You are Fundora AI Assistant, the official AI concierge for Fundora Real Estate Platform (fundora.one).
+You assist investors worldwide with verified platform knowledge in multiple languages including English, Urdu, Arabic, Pashto, Hindi, Bengali, Spanish, French, Turkish, Chinese, etc.
+
+FUNDORA PLATFORM FACTS:
+- Official Registered Entity: Fundora Real Estate Investment Platform (UK Companies House No. 16870956).
+- Website: https://fundora.one
+- Official Mobile App: YES! Fundora has an official downloadable Android Mobile App (Fundora APK) available directly on our website! Users can click the "Download App" / "Android APK" button in the top navigation bar or menu to download and install the app on Android devices.
+- Core Mission: Fractional real estate co-ownership in prime UK & Dubai residential/commercial properties starting from 10 USDT.
+- Daily Rental Yields: Earn 0.8% to 1.5% daily rental yields paid every 24 hours directly into user account balance. Instant profit claims available.
+- Minimum Deposit: 10 USDT (TRC20 & BEP20 accepted).
+- Minimum Withdrawal: 5 USDT (Processed via automated blockchain queue or within 1-24 hours).
+- Multi-tier Referral Rewards:
+  * Bronze Shield: 10% cash reward on 1st deposit.
+  * Silver Partner ($500+ or 3 refs): Access to high yield properties + fast track claims.
+  * Gold Director ($2,000+ or 5 refs): Priority fast-track auditing + 5% yield boost vouchers.
+  * Platinum Trustee ($10,500+ or 10 refs): VIP direct support + exclusive co-ownership rights.
+- Support Contact: fundora.one@gmail.com
+
+RULES FOR AI ASSISTANT:
+1. Always be polite, professional, concise, and helpful.
+2. Answer in the exact language requested by the user or specified in the prompt (English, Urdu, Arabic, Pashto, Hindi, Bengali, Spanish, French, Turkish, Chinese, etc.).
+3. Confirm clearly that Fundora HAS an official Mobile App available for download via the "Download App" button on the website.
+4. Use exact platform figures. Do NOT invent unmentioned features or guarantee fake investment returns.
+5. If a user asks a complex account complaint, requests account deactivation, or asks to speak to a human, trigger escalation mode by concluding with: "[ESCALATE_TO_HUMAN]".
+
+Respond clearly using rich formatting (bolding key terms).`;
+
+  // Endpoint: Floating AI Assistant
+  app.post("/api/ai/assistant", async (req, res) => {
+    const { message, chatHistory, language } = req.body;
+    if (!message || typeof message !== "string") {
+      return res.status(400).json({ success: false, error: "Message string is required." });
+    }
+
+    try {
+      const ai = getGeminiClient(req);
+      if (!ai) {
+        return res.json({
+          success: true,
+          reply: language === "ur"
+            ? "Fundora AI Assistant filhal aamada hai. Platform ke bare me koi sawal ho to humse fundora.one@gmail.com par rabta karein."
+            : "Fundora AI Assistant is active. Minimum deposit is 10 USDT, daily yields 0.8%-1.5%. For direct support email fundora.one@gmail.com.",
+          escalate: false
+        });
+      }
+
+      const formattedHistory = Array.isArray(chatHistory)
+        ? chatHistory.map((h: any) => `${h.sender === "user" ? "User" : "Assistant"}: ${h.text}`).join("\n")
+        : "";
+
+      const prompt = `${FUNDORA_SYSTEM_PROMPT}\n\nRecent Conversation History:\n${formattedHistory}\n\nUser Question (${language || "en"}): ${message}\n\nAssistant Answer:`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.6-flash",
+        contents: prompt
+      });
+
+      const text = response?.text || "";
+      const shouldEscalate = text.includes("[ESCALATE_TO_HUMAN]") || message.toLowerCase().includes("human") || message.toLowerCase().includes("admin");
+      const cleanReply = text.replace("[ESCALATE_TO_HUMAN]", "").trim();
+
+      return res.json({
+        success: true,
+        reply: cleanReply,
+        escalate: shouldEscalate
+      });
+    } catch (err: any) {
+      console.warn("[AI Assistant Proxy Error]", err?.message || err);
+      return res.json({
+        success: true,
+        reply: "Welcome to Fundora! Minimum deposit is 10 USDT via TRC20/BEP20. Rental yields are 0.8%-1.5% daily.",
+        escalate: false
+      });
+    }
+  });
+
+  // Endpoint: AI Community Auto-Reply
+  app.post("/api/ai/community-reply", async (req, res) => {
+    const { promptText, channelName } = req.body;
+    try {
+      const ai = getGeminiClient(req);
+      if (!ai) {
+        return res.json({
+          success: true,
+          reply: `🤖 **Fundora AI Agent**: Thanks for asking in #${channelName || "community"}! Minimum deposit is 10 USDT. Daily yields are 0.8%-1.5%.`
+        });
+      }
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.6-flash",
+        contents: `${FUNDORA_SYSTEM_PROMPT}\n\nA member posted this in channel #${channelName || "community"}:\n"${promptText}"\n\nProvide a helpful 2-3 sentence community answer as "Fundora Community AI":`
+      });
+
+      return res.json({
+        success: true,
+        reply: response?.text || "Welcome to Fundora Community! Feel free to ask any real estate investment questions."
+      });
+    } catch (err: any) {
+      return res.json({
+        success: true,
+        reply: "🤖 **Fundora AI Agent**: Minimum deposit is 10 USDT with daily claims of 0.8%-1.5% yields!"
+      });
+    }
+  });
+
+  // Endpoint: AI Translate English ↔ Urdu
+  app.post("/api/ai/translate", async (req, res) => {
+    const { text, targetLang } = req.body;
+    if (!text) return res.status(400).json({ success: false, error: "Text is required" });
+
+    try {
+      const ai = getGeminiClient(req);
+      if (!ai) {
+        return res.json({ success: true, translatedText: text });
+      }
+
+      const prompt = `Translate the following message accurately into ${targetLang === "ur" ? "Urdu" : "English"}. Return ONLY the translated string without commentary:\n\n"${text}"`;
+      const response = await ai.models.generateContent({
+        model: "gemini-3.6-flash",
+        contents: prompt
+      });
+
+      return res.json({
+        success: true,
+        translatedText: response?.text?.trim() || text
+      });
+    } catch (err) {
+      return res.json({ success: true, translatedText: text });
+    }
+  });
+
+  // Endpoint: AI Thread Summarizer
+  app.post("/api/ai/summarize", async (req, res) => {
+    const { messages } = req.body;
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ success: false, error: "Messages array required" });
+    }
+
+    try {
+      const ai = getGeminiClient(req);
+      if (!ai) {
+        return res.json({
+          success: true,
+          summary: "• Community discussion regarding real estate co-ownership yields and property updates."
+        });
+      }
+
+      const chatText = messages.map((m: any) => `${m.senderName}: ${m.text}`).join("\n");
+      const prompt = `Summarize this community discussion into 3 key bullet points with emojis:\n\n${chatText}`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.6-flash",
+        contents: prompt
+      });
+
+      return res.json({
+        success: true,
+        summary: response?.text || "• Thread summary generated successfully."
+      });
+    } catch (err) {
+      return res.json({
+        success: true,
+        summary: "• Community discussion on real estate investments and daily profit claims."
+      });
+    }
+  });
+
+  // Endpoint: AI Spam & Abuse Detection
+  app.post("/api/ai/spam-check", async (req, res) => {
+    const { text } = req.body;
+    if (!text) return res.json({ success: true, isSpam: false });
+
+    try {
+      const ai = getGeminiClient(req);
+      if (!ai) return res.json({ success: true, isSpam: false });
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.6-flash",
+        contents: `Analyze this chat message for spam, phishing, scams, or offensive language:\n\n"${text}"\n\nReturn JSON strictly matching schema.`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              isSpam: { type: Type.BOOLEAN },
+              reason: { type: Type.STRING }
+            },
+            required: ["isSpam"]
+          }
+        }
+      });
+
+      const parsed = JSON.parse(response?.text || '{"isSpam": false}');
+      return res.json({ success: true, isSpam: parsed.isSpam, reason: parsed.reason });
+    } catch (err) {
+      return res.json({ success: true, isSpam: false });
+    }
+  });
+
+  // Endpoint: Daily Investment Tip Generator
+  app.get("/api/ai/daily-tip", async (req, res) => {
+    try {
+      const ai = getGeminiClient(req);
+      if (!ai) {
+        return res.json({
+          success: true,
+          tipEn: "💡 Tip: Diversifying your portfolio across commercial and residential properties maximizes steady rental yield cash flow!",
+          tipUr: "💡 مشورہ: تجارتی اور رہائشی جائیدادوں میں یکساں سرمایہ کاری آپ کے روزانہ منافع کو مستحکم بناتی ہے۔"
+        });
+      }
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.6-flash",
+        contents: `Generate a short 1-sentence real estate investment wisdom tip in both English and Urdu. Return JSON.`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              tipEn: { type: Type.STRING },
+              tipUr: { type: Type.STRING }
+            },
+            required: ["tipEn", "tipUr"]
+          }
+        }
+      });
+
+      const data = JSON.parse(response?.text || "{}");
+      return res.json({
+        success: true,
+        tipEn: data.tipEn || "💡 Diversify across luxury and residential property shares to optimize daily yields.",
+        tipUr: data.tipUr || "💡 روزانہ منافع اور مستحکم پیداوار کے لیے مختلف جائیدادوں میں حصہ لیں۔"
+      });
+    } catch (err) {
+      return res.json({
+        success: true,
+        tipEn: "💡 Reinvesting your daily yield claims unlocks compound growth over time!",
+        tipUr: "💡 اپنے روزانہ کے منافع کو دوبارہ منتقل کرنے سے وقت کے ساتھ مرکب ترقی ملتی ہے۔"
+      });
+    }
+  });
+
   // Health check endpoint
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });

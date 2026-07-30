@@ -14,6 +14,8 @@ import BiometricLockScreen from './components/BiometricLockScreen';
 import SplashScreen from './components/SplashScreen';
 import AboutUs from './components/AboutUs';
 import ApkDownloadModal from './components/ApkDownloadModal';
+import { CommunityHub } from './components/CommunityHub';
+import { FloatingAiAssistant } from './components/FloatingAiAssistant';
 import { RealEstateProject, Transaction, UserAccount, InvestmentRecord, ProfitClaimRecord, SecurityLog, SystemSettings, Inquiry } from './types';
 import { INITIAL_PROJECTS, INITIAL_USER, INITIAL_ADMIN, INITIAL_TRANSACTIONS, INITIAL_SECURITY_LOGS } from './data';
 import { 
@@ -51,6 +53,13 @@ import {
   subscribeToSystemSettings
 } from './lib/firebaseSync';
 import { sendDepositEmail, sendWithdrawalEmail, sendKycEmail } from './lib/emailService';
+import { isNativeAppContainer } from './utils/nativeApp';
+import { 
+  requestNotificationPermission, 
+  notifyDepositUpdate, 
+  notifyWithdrawalUpdate, 
+  notifyKycUpdate 
+} from './utils/notifications';
 
 // Safe localStorage helper to prevent QuotaExceededError crashes with large attachments
 const safeSetLocalStorage = (key: string, value: string) => {
@@ -75,7 +84,7 @@ export default function App() {
     }
   }, [isFirebaseSynced]);
   // Navigation states
-  const [currentPage, setCurrentPage] = useState<'home' | 'login' | 'register' | 'forgot' | 'dashboard' | 'admin' | 'about'>('home');
+  const [currentPage, setCurrentPage] = useState<'home' | 'login' | 'register' | 'forgot' | 'dashboard' | 'admin' | 'about' | 'community'>('home');
   const [activeDashboardTab, setActiveDashboardTab] = useState<'overview' | 'properties' | 'wallet' | 'ledger' | 'claim' | 'referrals' | 'profile'>('overview');
   const [activeAdminTab, setActiveAdminTab] = useState<'stats' | 'deposits' | 'withdrawals' | 'projects' | 'users' | 'security' | 'inquiries'>('stats');
   const [scrollToAnchor, setScrollToAnchor] = useState<string | null>(null);
@@ -754,6 +763,67 @@ export default function App() {
     return () => clearInterval(interval);
   }, [isFirebaseSynced, investmentsList, usersListState, claimsHistory, activeUser]);
 
+  // Prompt for native mobile notification permissions on load or when user logs in
+  useEffect(() => {
+    requestNotificationPermission();
+  }, [activeUser?.id]);
+
+  // Real-time Push Notification alerts for Deposit, Withdrawal & KYC updates in Mobile Notification Bar
+  const prevTxStatusMapRef = useRef<Record<string, string>>({});
+  const prevKycStatusRef = useRef<boolean | undefined>(undefined);
+
+  useEffect(() => {
+    if (!activeUser) return;
+
+    // 1. Monitor KYC Verification Status changes
+    if (prevKycStatusRef.current !== undefined && prevKycStatusRef.current !== activeUser.isKycVerified) {
+      if (activeUser.isKycVerified) {
+        notifyKycUpdate('verified');
+      } else if (activeUser.kycSubmitted === false) {
+        notifyKycUpdate('rejected');
+      }
+    }
+    prevKycStatusRef.current = activeUser.isKycVerified;
+
+    // 2. Monitor Deposit and Withdrawal status changes
+    const userTxs = transactionsList.filter(
+      t => t.userId === activeUser.id || (t.userEmail && t.userEmail.toLowerCase() === activeUser.email.toLowerCase())
+    );
+
+    const currentMap: Record<string, string> = {};
+    userTxs.forEach(tx => {
+      currentMap[tx.id] = tx.status;
+      const prevStatus = prevTxStatusMapRef.current[tx.id];
+
+      // If transaction status changed!
+      if (prevStatus && prevStatus !== tx.status) {
+        const typeLower = (tx.type || '').toLowerCase();
+        const statusLower = (tx.status || '').toLowerCase();
+
+        const isDeposit = typeLower.includes('deposit');
+        const isWithdrawal = typeLower.includes('withdraw');
+        const isApproved = statusLower === 'completed' || statusLower === 'approved';
+        const isRejected = statusLower === 'rejected';
+
+        if (isDeposit) {
+          if (isApproved) {
+            notifyDepositUpdate(tx.amount, 'approved', tx.id);
+          } else if (isRejected) {
+            notifyDepositUpdate(tx.amount, 'rejected', tx.id);
+          }
+        } else if (isWithdrawal) {
+          if (isApproved) {
+            notifyWithdrawalUpdate(tx.amount, 'approved', tx.id);
+          } else if (isRejected) {
+            notifyWithdrawalUpdate(tx.amount, 'rejected', tx.id);
+          }
+        }
+      }
+    });
+
+    prevTxStatusMapRef.current = currentMap;
+  }, [transactionsList, activeUser?.isKycVerified, activeUser?.kycSubmitted, activeUser?.id]);
+
   // Clean up and migrate old Pakistani/South Asian cached values to UAE and UK defaults on startup
   useEffect(() => {
     const savedProjectsRaw = localStorage.getItem('inv_projects');
@@ -911,7 +981,7 @@ export default function App() {
       setCurrentPage('dashboard');
     }
 
-    if (isNewReg) {
+    if (isNewReg && !isNativeAppContainer()) {
       setIsNewRegistration(true);
       setShowApkModal(true);
     }
@@ -1914,6 +1984,25 @@ export default function App() {
           currentUser={activeUser}
         />
       )}
+
+      {currentPage === 'community' && (
+        <div className="w-full fixed top-[56px] bottom-[64px] sm:static sm:top-auto sm:bottom-auto sm:pt-20 sm:pb-6 px-0 sm:px-4 flex-1 flex flex-col min-h-0 overflow-hidden z-10">
+          <CommunityHub 
+            currentUser={activeUser || INITIAL_USER} 
+            onNavigateToDeposit={() => {
+              setCurrentPage('dashboard');
+              setActiveDashboardTab('wallet');
+            }}
+          />
+        </div>
+      )}
+
+      {/* Global Floating AI Assistant */}
+      <FloatingAiAssistant 
+        currentUser={activeUser}
+        onNavigateToCommunity={() => setCurrentPage('community')}
+        isCommunityPage={currentPage === 'community'}
+      />
 
       {/* Global APK Download Modal */}
       <ApkDownloadModal 

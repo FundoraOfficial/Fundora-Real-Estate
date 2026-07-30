@@ -13,9 +13,9 @@ import {
 } from 'lucide-react';
 
 interface GlobalNavbarProps {
-  currentPage: 'home' | 'login' | 'register' | 'forgot' | 'dashboard' | 'admin' | 'about';
+  currentPage: 'home' | 'login' | 'register' | 'forgot' | 'dashboard' | 'admin' | 'about' | 'community';
   activeUser: UserAccount | null;
-  onNavigate: (page: 'home' | 'login' | 'register' | 'forgot' | 'dashboard' | 'admin' | 'about', reason?: string) => void;
+  onNavigate: (page: 'home' | 'login' | 'register' | 'forgot' | 'dashboard' | 'admin' | 'about' | 'community', reason?: string) => void;
   onLogout: () => void;
   // Dashboard tab controls
   activeTab?: 'overview' | 'properties' | 'wallet' | 'ledger' | 'claim' | 'referrals' | 'profile';
@@ -211,6 +211,16 @@ export default function GlobalNavbar({
                 <span>Referral</span>
               </button>
               <button 
+                onClick={() => onNavigate('community')}
+                className={`flex items-center gap-1.5 hover:text-sky-300 transition-colors uppercase tracking-wider font-extrabold cursor-pointer px-2.5 py-1 rounded-lg bg-sky-500/10 border border-sky-500/30 text-sky-400 ${
+                  currentPage === 'community' ? 'bg-sky-500 text-slate-950 font-black border-sky-400' : ''
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>Community</span>
+                <span className="w-2 h-2 rounded-full bg-sky-400 animate-ping" />
+              </button>
+              <button 
                 onClick={() => handleDashboardTabClick('profile')}
                 className="flex items-center gap-1 hover:text-emerald-400 transition-colors uppercase tracking-wider text-slate-400 font-bold cursor-pointer"
               >
@@ -334,6 +344,17 @@ export default function GlobalNavbar({
                     <Users className="w-3.5 h-3.5" />
                     <span>Referral</span>
                   </button>
+                  <button 
+                    onClick={() => onNavigate('community')}
+                    className={`flex items-center gap-1.5 transition-all uppercase tracking-wider font-extrabold px-3 py-1 rounded-lg border ${
+                      currentPage === 'community' 
+                        ? 'bg-sky-500 text-slate-950 border-sky-400 font-black' 
+                        : 'bg-sky-500/10 text-sky-300 border-sky-500/30 hover:bg-sky-500/20'
+                    }`}
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    <span>Community</span>
+                  </button>
                 </>
               )}
             </>
@@ -429,7 +450,23 @@ export default function GlobalNavbar({
           {activeUser === null ? (
             <>
               {/* Guest links */}
-              <div className="flex flex-col space-y-3 font-semibold text-xs text-slate-450 uppercase tracking-widest mb-4">
+              <div className="flex flex-col space-y-2.5 font-semibold text-xs text-slate-450 uppercase tracking-widest mb-4">
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onNavigate('community');
+                  }}
+                  className="w-full text-left py-2.5 px-3 rounded-xl bg-sky-500/15 border border-sky-500/40 flex items-center justify-between text-sky-300 font-extrabold cursor-pointer shadow-sm"
+                >
+                  <div className="flex items-center gap-2">
+                    <MessageSquare className="w-4 h-4 text-sky-400" />
+                    <span>Community Chat Channel</span>
+                  </div>
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-sky-400 animate-ping" />
+                    <span className="text-[9px] bg-sky-400/20 text-sky-300 px-1.5 py-0.5 rounded font-mono">LIVE</span>
+                  </span>
+                </button>
                 <button
                   onClick={() => {
                     setMobileMenuOpen(false);
@@ -657,6 +694,23 @@ export default function GlobalNavbar({
                       <span>Referrals Panel</span>
                       <Users className="w-4 h-4" />
                     </button>
+                    <button
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        onNavigate('community');
+                      }}
+                      className={`w-full text-left py-3 px-4 rounded-lg flex items-center justify-between ${
+                        currentPage === 'community' 
+                          ? 'bg-sky-500 text-slate-950 font-black border-l-4 border-sky-400' 
+                          : 'bg-sky-500/10 text-sky-300 font-extrabold border border-sky-500/30 hover:bg-sky-500/20'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <MessageSquare className="w-4 h-4 text-sky-400" />
+                        <span>Community Chat Channel</span>
+                      </div>
+                      <span className="px-1.5 py-0.5 rounded text-[9px] bg-sky-400/20 text-sky-300 font-mono font-bold">LIVE</span>
+                    </button>
                   </>
                 )}
               </div>
@@ -722,14 +776,19 @@ export default function GlobalNavbar({
               </button>
             </div>
 
-            {/* 4. Features */}
+            {/* 4. Community Chat Channel */}
             <button
-              id="mobile-bottom-guest-howto"
-              onClick={(e) => handleAnchorClick('features-anchor', e)}
-              className="flex flex-col items-center gap-1 cursor-pointer transition-colors w-14 text-center text-slate-400 hover:text-white"
+              id="mobile-bottom-guest-community"
+              onClick={() => onNavigate('community')}
+              className={`flex flex-col items-center gap-1 cursor-pointer transition-colors w-14 text-center ${
+                currentPage === 'community' ? 'text-sky-300 font-extrabold' : 'text-slate-400 hover:text-white'
+              }`}
             >
-              <Sparkles className="w-5 h-5 stroke-[2]" />
-              <span className="text-[8px] font-bold uppercase tracking-widest block font-sans">How-To</span>
+              <div className="relative">
+                <MessageSquare className="w-5 h-5 stroke-[2] text-sky-400" />
+                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-sky-400 animate-ping" />
+              </div>
+              <span className="text-[8px] font-bold uppercase tracking-widest block font-sans text-sky-300">Community</span>
             </button>
 
             {/* 5. FAQs / Support info */}
@@ -853,16 +912,19 @@ export default function GlobalNavbar({
                   </button>
                 </div>
 
-                {/* 4. Transactions Ledger (Scrolling to #binance-ledger-module) */}
+                {/* 4. Community Chat Channel */}
                 <button
-                  id="mobile-bottom-inv-transactions"
-                  onClick={handleTransactionsTabClick}
+                  id="mobile-bottom-inv-community"
+                  onClick={() => onNavigate('community')}
                   className={`flex flex-col items-center gap-1 cursor-pointer transition-colors w-14 text-center ${
-                    currentPage === 'dashboard' && activeTab === 'wallet' ? 'text-emerald-400' : 'text-slate-400 hover:text-white'
+                    currentPage === 'community' ? 'text-sky-300 font-extrabold' : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  <Receipt className="w-5 h-5 stroke-[2]" />
-                  <span className="text-[8px] font-bold uppercase tracking-widest block font-sans">Ledger</span>
+                  <div className="relative">
+                    <MessageSquare className="w-5 h-5 stroke-[2] text-sky-400" />
+                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-sky-400 animate-ping" />
+                  </div>
+                  <span className="text-[8px] font-bold uppercase tracking-widest block font-sans text-sky-300">Community</span>
                 </button>
 
                 {/* 5. My Profile tab */}
