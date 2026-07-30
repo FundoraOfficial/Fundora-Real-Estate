@@ -40,15 +40,15 @@ export async function initServiceWorker(): Promise<ServiceWorkerRegistration | n
 export function getNotificationPermission(): SystemNotificationPermission {
   if (typeof window === 'undefined') return 'denied';
 
+  if ('Notification' in window) {
+    return Notification.permission as SystemNotificationPermission;
+  }
+
   if (localStorage.getItem('fundora_notifications_allowed') === 'true') {
     return 'granted';
   }
 
-  if (!('Notification' in window)) {
-    return 'granted';
-  }
-
-  return Notification.permission as SystemNotificationPermission;
+  return 'default';
 }
 
 /**

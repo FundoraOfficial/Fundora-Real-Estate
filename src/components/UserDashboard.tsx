@@ -264,7 +264,7 @@ export default function UserDashboard({
   const [showNotifPermModal, setShowNotifPermModal] = useState<boolean>(false);
 
   React.useEffect(() => {
-    if (getNotificationPermission() === 'default' && !sessionStorage.getItem('fundora_notif_modal_dismissed')) {
+    if (getNotificationPermission() === 'default' && localStorage.getItem('fundora_notif_prompt_shown') !== 'true') {
       const timer = setTimeout(() => {
         setShowNotifPermModal(true);
       }, 1200);
@@ -5917,7 +5917,7 @@ ${activeViewDoc.project.description}`
         isOpen={showNotifPermModal}
         onClose={() => {
           setShowNotifPermModal(false);
-          sessionStorage.setItem('fundora_notif_modal_dismissed', 'true');
+          localStorage.setItem('fundora_notif_prompt_shown', 'true');
         }}
       />
 

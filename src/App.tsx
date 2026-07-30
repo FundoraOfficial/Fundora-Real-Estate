@@ -56,12 +56,14 @@ import { sendDepositEmail, sendWithdrawalEmail, sendKycEmail } from './lib/email
 import { isNativeAppContainer } from './utils/nativeApp';
 import { 
   requestNotificationPermission, 
+  getNotificationPermission,
   notifyDepositUpdate, 
   notifyWithdrawalUpdate, 
   notifyKycUpdate,
   initServiceWorker
 } from './utils/notifications';
 import InAppNotificationBanner from './components/InAppNotificationBanner';
+import NotificationPermissionModal from './components/NotificationPermissionModal';
 
 // Safe localStorage helper to prevent QuotaExceededError crashes with large attachments
 const safeSetLocalStorage = (key: string, value: string) => {
@@ -75,11 +77,25 @@ const safeSetLocalStorage = (key: string, value: string) => {
 export default function App() {
   const [showSplash, setShowSplash] = useState<boolean>(true);
   const [isFirebaseSynced, setIsFirebaseSynced] = useState<boolean>(false);
+  const [showNotifPermModal, setShowNotifPermModal] = useState<boolean>(false);
   const isInitialSyncRef = useRef(true);
 
   useEffect(() => {
     initServiceWorker().catch(() => {});
   }, []);
+
+  // Automatic Notification Permission Prompt on First APK App Launch
+  useEffect(() => {
+    const promptShown = localStorage.getItem('fundora_notif_prompt_shown') === 'true';
+    const notifState = getNotificationPermission();
+
+    if (!promptShown && notifState !== 'granted') {
+      const timer = setTimeout(() => {
+        setShowNotifPermModal(true);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [showSplash]);
 
   useEffect(() => {
     if (isFirebaseSynced) {
@@ -2016,6 +2032,18 @@ export default function App() {
         isOpen={showApkModal} 
         onClose={() => setShowApkModal(false)} 
         isNewRegistration={isNewRegistration} 
+      />
+
+      {/* First Launch Android / Web Notification Permission Modal */}
+      <NotificationPermissionModal
+        isOpen={showNotifPermModal}
+        onClose={() => {
+          setShowNotifPermModal(false);
+          localStorage.setItem('fundora_notif_prompt_shown', 'true');
+        }}
+        onPermissionChange={() => {
+          localStorage.setItem('fundora_notif_prompt_shown', 'true');
+        }}
       />
     </MobileShell>
     </>
