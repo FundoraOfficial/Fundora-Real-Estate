@@ -48,7 +48,53 @@ export async function requestNotificationPermission(): Promise<boolean> {
   return false;
 }
 
-export interface NotificationOptions {
+export interface NotificationPreferences {
+  masterEnabled: boolean;
+  depositAlerts: boolean;
+  withdrawalAlerts: boolean;
+  kycAlerts: boolean;
+  yieldAlerts: boolean;
+  chatAlerts: boolean;
+}
+
+const DEFAULT_PREFERENCES: NotificationPreferences = {
+  masterEnabled: true,
+  depositAlerts: true,
+  withdrawalAlerts: true,
+  kycAlerts: true,
+  yieldAlerts: true,
+  chatAlerts: true,
+};
+
+/**
+ * Get current notification preferences stored in browser local storage
+ */
+export function getNotificationPreferences(): NotificationPreferences {
+  if (typeof window === 'undefined') return DEFAULT_PREFERENCES;
+  try {
+    const raw = localStorage.getItem('fundora_notif_prefs');
+    if (raw) {
+      return { ...DEFAULT_PREFERENCES, ...JSON.parse(raw) };
+    }
+  } catch (err) {
+    console.warn('Failed to parse notification preferences:', err);
+  }
+  return DEFAULT_PREFERENCES;
+}
+
+/**
+ * Save updated notification preferences
+ */
+export function saveNotificationPreferences(prefs: NotificationPreferences): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem('fundora_notif_prefs', JSON.stringify(prefs));
+  } catch (err) {
+    console.warn('Failed to save notification preferences:', err);
+  }
+}
+
+export interface CustomNotificationOptions {
   body: string;
   icon?: string;
   tag?: string;
@@ -62,9 +108,15 @@ export interface NotificationOptions {
  */
 export async function sendSystemNotification(
   title: string,
-  options: NotificationOptions
+  options: CustomNotificationOptions
 ): Promise<boolean> {
   if (typeof window === 'undefined') return false;
+
+  const prefs = getNotificationPreferences();
+  if (!prefs.masterEnabled) {
+    console.log('System notification suppressed: Master notifications disabled.');
+    return false;
+  }
 
   const win = window as any;
   const icon = options.icon || '/favicon.ico';
@@ -126,6 +178,9 @@ export async function sendSystemNotification(
  * Notification helper for DEPOSIT updates
  */
 export function notifyDepositUpdate(amount: number | string, status: 'approved' | 'rejected' | 'pending', txId?: string) {
+  const prefs = getNotificationPreferences();
+  if (!prefs.masterEnabled || !prefs.depositAlerts) return;
+
   const statusUpper = status.toUpperCase();
   let title = `💳 Deposit ${statusUpper} - Fundora`;
   let body = `Your deposit of $${amount} USDT has been ${status}. Check your dashboard portfolio!`;
@@ -152,6 +207,9 @@ export function notifyDepositUpdate(amount: number | string, status: 'approved' 
  * Notification helper for WITHDRAWAL updates
  */
 export function notifyWithdrawalUpdate(amount: number | string, status: 'approved' | 'rejected' | 'pending' | 'processing', txId?: string) {
+  const prefs = getNotificationPreferences();
+  if (!prefs.masterEnabled || !prefs.withdrawalAlerts) return;
+
   let title = `💸 Withdrawal ${status.toUpperCase()} - Fundora`;
   let body = `Your withdrawal request of $${amount} USDT is now ${status}.`;
 
@@ -177,6 +235,9 @@ export function notifyWithdrawalUpdate(amount: number | string, status: 'approve
  * Notification helper for KYC status changes
  */
 export function notifyKycUpdate(status: 'verified' | 'rejected' | 'pending' | 'unverified') {
+  const prefs = getNotificationPreferences();
+  if (!prefs.masterEnabled || !prefs.kycAlerts) return;
+
   let title = `🛡️ Identity Verification (KYC) Update`;
   let body = `Your KYC status is now ${status}.`;
 
@@ -202,6 +263,9 @@ export function notifyKycUpdate(status: 'verified' | 'rejected' | 'pending' | 'u
  * Notification helper for Rental Yield / Daily Profit claims
  */
 export function notifyYieldClaim(amount: number | string, projectName: string) {
+  const prefs = getNotificationPreferences();
+  if (!prefs.masterEnabled || !prefs.yieldAlerts) return;
+
   sendSystemNotification(`📈 Daily Rental Yield Claimed!`, {
     body: `You successfully claimed $${amount} USDT rental income from ${projectName}.`,
     tag: `yield-${Date.now()}`
@@ -212,8 +276,22 @@ export function notifyYieldClaim(amount: number | string, projectName: string) {
  * Notification helper for Community Chat DMs or Support replies
  */
 export function notifyCommunityMessage(senderName: string, textSnippet: string) {
+  const prefs = getNotificationPreferences();
+  if (!prefs.masterEnabled || !prefs.chatAlerts) return;
+
   sendSystemNotification(`💬 Message from ${senderName}`, {
     body: textSnippet.length > 70 ? `${textSnippet.substring(0, 67)}...` : textSnippet,
     tag: `chat-${Date.now()}`
+  });
+}
+
+/**
+ * Trigger a test notification bar alert
+ */
+export function triggerTestNotification(): Promise<boolean> {
+  return sendSystemNotification(`🔔 Fundora Device Notification Test`, {
+    body: `Push notification bar alerts are active and configured correctly on your device!`,
+    tag: `test-${Date.now()}`,
+    vibrate: [100, 50, 100]
   });
 }
