@@ -47,17 +47,17 @@ export const INITIAL_TAJAMMAL_USER: UserAccount = {
   referralCode: 'TAJAMMAL405',
   referredBy: 'ADMIN100',
   wallet: {
-    usdtTrc20Address: 'TX1h2A9eFm7xKsZ8Jq9wDpBcNdKyLmTqRy',
-    usdtBep20Address: '0x71C7656EC7ab88b098defB751B7401B5f6d8976F',
-    isVerified: true
+    usdtTrc20Address: '',
+    usdtBep20Address: '',
+    isVerified: false
   },
-  balance: 1000.00,
-  totalDeposited: 2000.00,
-  totalWithdrawn: 0,
-  totalInvestment: 565.00,
-  totalProfitEarned: 228.82,
+  balance: 0.00,
+  totalDeposited: 0.00,
+  totalWithdrawn: 0.00,
+  totalInvestment: 0.00,
+  totalProfitEarned: 0.00,
   isEmailVerified: true,
-  registrationDate: '2026-04-10',
+  registrationDate: '2026-07-31',
   webAuthnEnabled: false,
   webAuthnCredentialId: '',
   webAuthnPublicKey: ''

@@ -125,12 +125,19 @@ export default function App() {
 
   const [transactionsList, setTransactionsList] = useState<Transaction[]>(() => {
     const saved = localStorage.getItem('inv_transactions');
-    return saved ? JSON.parse(saved) : INITIAL_TRANSACTIONS;
+    const loaded: Transaction[] = saved ? JSON.parse(saved) : INITIAL_TRANSACTIONS;
+    return loaded.filter(tx => tx.userId !== 'user-tajammal' && (!tx.userEmail || !tx.userEmail.toLowerCase().includes('tajammal')));
   });
 
   const [usersListState, setUsersListState] = useState<UserAccount[]>(() => {
     const saved = localStorage.getItem('inv_users');
-    const list: UserAccount[] = saved ? JSON.parse(saved) : [INITIAL_USER, INITIAL_ADMIN, INITIAL_TAJAMMAL_USER];
+    let list: UserAccount[] = saved ? JSON.parse(saved) : [INITIAL_USER, INITIAL_ADMIN, INITIAL_TAJAMMAL_USER];
+    list = list.map(u => {
+      if (u && u.email && (u.email.trim().toLowerCase().includes('tajammal') || u.id === 'user-tajammal')) {
+        return { ...INITIAL_TAJAMMAL_USER, email: 'tajammalrehmat1@gmail.com' };
+      }
+      return u;
+    });
     if (!list.some(u => u && u.email && u.email.trim().toLowerCase() === 'tajammalrehmat1@gmail.com')) {
       list.push(INITIAL_TAJAMMAL_USER);
     }
@@ -159,6 +166,9 @@ export default function App() {
       const parsed = JSON.parse(saved);
       if (parsed && parsed.id === 'user-admin' && (parsed.email === 'admin@fundora.one' || parsed.email === 'no-reply@fundora.one')) {
         return { ...parsed, email: 'fundora.one@gmail.com' };
+      }
+      if (parsed && parsed.email && (parsed.email.trim().toLowerCase().includes('tajammal') || parsed.id === 'user-tajammal')) {
+        return { ...INITIAL_TAJAMMAL_USER, email: 'tajammalrehmat1@gmail.com' };
       }
       return parsed;
     } catch (_) {
@@ -345,7 +355,8 @@ export default function App() {
         status: 'Active'
       }
     ];
-    return saved ? JSON.parse(saved) : defaultRecord;
+    const loaded: InvestmentRecord[] = saved ? JSON.parse(saved) : defaultRecord;
+    return loaded.filter(inv => inv.userId !== 'user-tajammal' && (!inv.userEmail || !inv.userEmail.toLowerCase().includes('tajammal')));
   });
 
   const [claimsHistory, setClaimsHistory] = useState<ProfitClaimRecord[]>(() => {
@@ -369,7 +380,8 @@ export default function App() {
         status: 'Expired' // A missed claim example
       }
     ];
-    return saved ? JSON.parse(saved) : defaultClaims;
+    const loaded: ProfitClaimRecord[] = saved ? JSON.parse(saved) : defaultClaims;
+    return loaded.filter(c => c.userId !== 'user-tajammal' && (!c.userEmail || !c.userEmail.toLowerCase().includes('tajammal')));
   });
 
   const [securityLogsList, setSecurityLogsList] = useState<SecurityLog[]>(() => {
@@ -588,21 +600,59 @@ export default function App() {
           deletedEmails = JSON.parse(localStorage.getItem('inv_deleted_user_emails') || '[]');
         } catch (_) {}
 
+        // Ensure Tajammal user is reset to a fresh zeroed state in Firestore and local state
+        await saveUserToFirebase(INITIAL_TAJAMMAL_USER);
+
         if (users !== null && users.length > 0) {
-          const cleanUsers = users.filter(u => 
+          const cleanUsers = users.map(u => {
+            if (u && u.email && (u.email.trim().toLowerCase().includes('tajammal') || u.id === 'user-tajammal')) {
+              return INITIAL_TAJAMMAL_USER;
+            }
+            return u;
+          }).filter(u => 
             u && 
             u.email && 
             u.email.trim().toLowerCase() !== 'no-reply@fundora.one' &&
             !deletedIds.includes(u.id) &&
             !deletedEmails.includes(u.email.trim().toLowerCase())
           );
+          if (!cleanUsers.some(u => u.id === INITIAL_TAJAMMAL_USER.id)) {
+            cleanUsers.push(INITIAL_TAJAMMAL_USER);
+          }
           setUsersListState(cleanUsers);
           safeSetLocalStorage('inv_users', JSON.stringify(cleanUsers));
         }
 
-        if (transactions !== null) setTransactionsList(transactions);
-        if (investments !== null) setInvestmentsList(investments);
-        if (claims !== null) setClaimsHistory(claims);
+        if (transactions !== null) {
+          for (const tx of transactions) {
+            if (tx.userId === 'user-tajammal' || (tx.userEmail && tx.userEmail.toLowerCase().includes('tajammal'))) {
+              await deleteTransactionFromFirebase(tx.id);
+            }
+          }
+          const cleanTxs = transactions.filter(tx => tx.userId !== 'user-tajammal' && (!tx.userEmail || !tx.userEmail.toLowerCase().includes('tajammal')));
+          setTransactionsList(cleanTxs);
+        }
+
+        if (investments !== null) {
+          for (const inv of investments) {
+            if (inv.userId === 'user-tajammal' || (inv.userEmail && inv.userEmail.toLowerCase().includes('tajammal'))) {
+              await deleteInvestmentFromFirebase(inv.id);
+            }
+          }
+          const cleanInvs = investments.filter(inv => inv.userId !== 'user-tajammal' && (!inv.userEmail || !inv.userEmail.toLowerCase().includes('tajammal')));
+          setInvestmentsList(cleanInvs);
+        }
+
+        if (claims !== null) {
+          for (const cl of claims) {
+            if (cl.userId === 'user-tajammal' || (cl.userEmail && cl.userEmail.toLowerCase().includes('tajammal'))) {
+              await deleteClaimFromFirebase(cl.id);
+            }
+          }
+          const cleanClaims = claims.filter(cl => cl.userId !== 'user-tajammal' && (!cl.userEmail || !cl.userEmail.toLowerCase().includes('tajammal')));
+          setClaimsHistory(cleanClaims);
+        }
+
         if (logs !== null) setSecurityLogsList(logs);
         if (settings !== null) setSystemSettings(settings);
         if (inquiries !== null) setInquiriesList(inquiries);
@@ -620,7 +670,10 @@ export default function App() {
                 localStorage.removeItem('inv_active_user');
                 safeSetLocalStorage('inv_active_user', '');
               } else {
-                const freshUser = users ? users.find(u => u.id === parsed.id || u.email.toLowerCase().trim() === cleanE) : null;
+                let freshUser = users ? users.find(u => u.id === parsed.id || u.email.toLowerCase().trim() === cleanE) : null;
+                if (cleanE.includes('tajammal') || parsed.id === 'user-tajammal') {
+                  freshUser = INITIAL_TAJAMMAL_USER;
+                }
                 if (freshUser) {
                   setActiveUser(freshUser);
                   const isLocalActive = localStorage.getItem(`inv_device_biometric_active_${freshUser.email.toLowerCase().trim()}`) === 'true';
