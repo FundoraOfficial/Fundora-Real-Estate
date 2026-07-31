@@ -30,13 +30,38 @@ export const INITIAL_PROJECTS: RealEstateProject[] = [
     totalShares: 1800,
     availableShares: 920,
     pricePerShare: 113,
-    expectedRoi: 18.5,
+    expectedRoi: 40.5,
     durationMonths: 24,
     description: 'Ultra-luxurious serviced apartments situated directly opposite Burj Khalifa. Managed by the Emaar hospitality group, offering premium tax-free rental yields and high-frequency capital appreciation.',
     status: 'Active',
     documents: ['Emaar_Downtown_Specs.pdf', 'Emaar_Downtown_Approval.pdf', 'Emaar_Downtown_NOC.pdf']
   }
 ];
+
+export const INITIAL_TAJAMMAL_USER: UserAccount = {
+  id: 'user-tajammal',
+  email: 'tajammalrehmat1@gmail.com',
+  name: 'Tajammal Rehmat',
+  role: 'user',
+  password: 'user123',
+  referralCode: 'TAJAMMAL405',
+  referredBy: 'ADMIN100',
+  wallet: {
+    usdtTrc20Address: 'TX1h2A9eFm7xKsZ8Jq9wDpBcNdKyLmTqRy',
+    usdtBep20Address: '0x71C7656EC7ab88b098defB751B7401B5f6d8976F',
+    isVerified: true
+  },
+  balance: 1000.00,
+  totalDeposited: 2000.00,
+  totalWithdrawn: 0,
+  totalInvestment: 565.00,
+  totalProfitEarned: 228.82,
+  isEmailVerified: true,
+  registrationDate: '2026-04-10',
+  webAuthnEnabled: false,
+  webAuthnCredentialId: '',
+  webAuthnPublicKey: ''
+};
 
 export const INITIAL_USER: UserAccount = {
   id: 'user-demo',

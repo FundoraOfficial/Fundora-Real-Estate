@@ -160,7 +160,17 @@ export const loadProjectsFromFirebase = async (): Promise<RealEstateProject[] | 
   try {
     const snapshot = await getDocs(collection(db, 'projects'));
     if (snapshot.empty) return INITIAL_PROJECTS;
-    return snapshot.docs.map(d => d.data() as RealEstateProject);
+    const projects = snapshot.docs.map(d => d.data() as RealEstateProject);
+    return projects.map(p => {
+      if (p.id === 'proj-6' || p.status === 'Active' || (p.name && p.name.includes('Emaar'))) {
+        const updated = { ...p, expectedRoi: 40.5 };
+        if (p.expectedRoi !== 40.5) {
+          saveProjectToFirebase(updated).catch(() => {});
+        }
+        return updated;
+      }
+      return p;
+    });
   } catch (e) {
     console.error('Error loading projects from Firebase:', e);
     return null;

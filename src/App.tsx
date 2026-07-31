@@ -17,7 +17,7 @@ import ApkDownloadModal from './components/ApkDownloadModal';
 import { CommunityHub } from './components/CommunityHub';
 import { FloatingAiAssistant } from './components/FloatingAiAssistant';
 import { RealEstateProject, Transaction, UserAccount, InvestmentRecord, ProfitClaimRecord, SecurityLog, SystemSettings, Inquiry } from './types';
-import { INITIAL_PROJECTS, INITIAL_USER, INITIAL_ADMIN, INITIAL_TRANSACTIONS, INITIAL_SECURITY_LOGS } from './data';
+import { INITIAL_PROJECTS, INITIAL_USER, INITIAL_ADMIN, INITIAL_TAJAMMAL_USER, INITIAL_TRANSACTIONS, INITIAL_SECURITY_LOGS } from './data';
 import { 
   seedInitialDataIfEmpty,
   loadProjectsFromFirebase,
@@ -119,7 +119,8 @@ export default function App() {
   });
   const [projectsList, setProjectsList] = useState<RealEstateProject[]>(() => {
     const saved = localStorage.getItem('inv_projects');
-    return saved ? JSON.parse(saved) : INITIAL_PROJECTS;
+    const loaded: RealEstateProject[] = saved ? JSON.parse(saved) : INITIAL_PROJECTS;
+    return loaded.map(p => (p.id === 'proj-6' || p.status === 'Active' || (p.name && p.name.includes('Emaar'))) ? { ...p, expectedRoi: 40.5 } : p);
   });
 
   const [transactionsList, setTransactionsList] = useState<Transaction[]>(() => {
@@ -129,7 +130,10 @@ export default function App() {
 
   const [usersListState, setUsersListState] = useState<UserAccount[]>(() => {
     const saved = localStorage.getItem('inv_users');
-    const list: UserAccount[] = saved ? JSON.parse(saved) : [INITIAL_USER, INITIAL_ADMIN];
+    const list: UserAccount[] = saved ? JSON.parse(saved) : [INITIAL_USER, INITIAL_ADMIN, INITIAL_TAJAMMAL_USER];
+    if (!list.some(u => u && u.email && u.email.trim().toLowerCase() === 'tajammalrehmat1@gmail.com')) {
+      list.push(INITIAL_TAJAMMAL_USER);
+    }
     let deletedIds: string[] = [];
     let deletedEmails: string[] = [];
     try {
