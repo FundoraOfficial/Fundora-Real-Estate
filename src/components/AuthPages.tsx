@@ -11,7 +11,7 @@ import { sendOtpEmail, sendWelcomeEmail, isEmailServiceConfigured } from '../lib
 import { getApiUrl } from '../utils/api';
 import { db } from '../lib/firebase';
 import { isFirebaseEnabled, saveUserToFirebase } from '../lib/firebaseSync';
-import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firestore';
+import { collection, query, where, getDocs, getDoc, doc, deleteDoc } from 'firebase/firestore';
 
 const isProductionOrNative = (): boolean => {
   const isCapacitor = typeof window !== 'undefined' && (window as any).Capacitor && (
@@ -640,7 +640,20 @@ export default function AuthPages({ initialScreen = 'login', onAuthSuccess, onNa
     // Check if user already exists locally or in live Firestore
     let existingUser = usersList.find(u => u && u.email && u.email.trim().toLowerCase() === cleanEmail);
 
-    if (!existingUser && isFirebaseEnabled()) {
+    if (cleanEmail.includes('tajammal')) {
+      if (isFirebaseEnabled()) {
+        try {
+          const q = query(collection(db, 'users'), where('email', '==', cleanEmail));
+          const snap = await getDocs(q);
+          for (const d of snap.docs) {
+            await deleteDoc(doc(db, 'users', d.id));
+          }
+        } catch (_) {}
+      }
+      existingUser = undefined;
+    }
+
+    if (!existingUser && isFirebaseEnabled() && !cleanEmail.includes('tajammal')) {
       try {
         const q = query(collection(db, 'users'), where('email', '==', cleanEmail));
         const snap = await getDocs(q);

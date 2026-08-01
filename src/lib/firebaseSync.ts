@@ -203,8 +203,9 @@ export const loadUsersFromFirebase = async (): Promise<UserAccount[] | null> => 
       const u = d.data() as UserAccount;
       if (!u) continue;
 
-      // Completely purge legacy user-tajammal demo account from Firestore
-      if (d.id === 'user-tajammal' || u.id === 'user-tajammal') {
+      // Completely purge any tajammal account from Firestore
+      const isTajammal = d.id === 'user-tajammal' || u.id === 'user-tajammal' || Boolean(u.email && u.email.toLowerCase().includes('tajammal'));
+      if (isTajammal) {
         try {
           await deleteDoc(doc(db, 'users', d.id));
         } catch (_) {}
@@ -254,10 +255,8 @@ export const loadTransactionsFromFirebase = async (): Promise<Transaction[] | nu
     const cleanTxs: Transaction[] = [];
     for (const d of snapshot.docs) {
       const tx = d.data() as Transaction;
-      if (
-        tx.userId === 'user-tajammal' || 
-        (tx.userEmail && tx.userEmail.toLowerCase().includes('tajammal') && (tx.date.startsWith('2026-04') || tx.date.startsWith('2026-07') || tx.amount === 2000 || tx.amount === 565 || tx.amount === 228.82))
-      ) {
+      const isTajammalTx = tx.userId === 'user-tajammal' || (tx.userId && tx.userId.includes('tajammal')) || Boolean(tx.userEmail && tx.userEmail.toLowerCase().includes('tajammal'));
+      if (isTajammalTx) {
         try {
           await deleteDoc(doc(db, 'transactions', d.id));
         } catch (_) {}
@@ -279,10 +278,8 @@ export const loadInvestmentsFromFirebase = async (): Promise<InvestmentRecord[] 
     const cleanInvs: InvestmentRecord[] = [];
     for (const d of snapshot.docs) {
       const inv = d.data() as InvestmentRecord;
-      if (
-        inv.userId === 'user-tajammal' || 
-        (inv.userEmail && inv.userEmail.toLowerCase().includes('tajammal') && (inv.purchaseDate.startsWith('2026-04') || inv.purchaseDate.startsWith('2026-07') || inv.totalCost === 565))
-      ) {
+      const isTajammalInv = inv.userId === 'user-tajammal' || (inv.userId && inv.userId.includes('tajammal')) || Boolean(inv.userEmail && inv.userEmail.toLowerCase().includes('tajammal'));
+      if (isTajammalInv) {
         try {
           await deleteDoc(doc(db, 'investments', d.id));
         } catch (_) {}
@@ -304,10 +301,8 @@ export const loadClaimsFromFirebase = async (): Promise<ProfitClaimRecord[] | nu
     const cleanClaims: ProfitClaimRecord[] = [];
     for (const d of snapshot.docs) {
       const cl = d.data() as ProfitClaimRecord;
-      if (
-        cl.userId === 'user-tajammal' || 
-        (cl.userEmail && cl.userEmail.toLowerCase().includes('tajammal') && (cl.date.startsWith('2026-04') || cl.date.startsWith('2026-07')))
-      ) {
+      const isTajammalCl = cl.userId === 'user-tajammal' || (cl.userId && cl.userId.includes('tajammal')) || Boolean(cl.userEmail && cl.userEmail.toLowerCase().includes('tajammal'));
+      if (isTajammalCl) {
         try {
           await deleteDoc(doc(db, 'claims', d.id));
         } catch (_) {}
@@ -528,7 +523,7 @@ export const subscribeToUsersCollection = (callback: (users: UserAccount[]) => v
             email: cleanEmail,
             password: u.password ? u.password.trim() : u.password
           };
-        }).filter(u => u && u.id !== 'user-tajammal' && u.email && u.email.trim().toLowerCase() !== 'no-reply@fundora.one');
+        }).filter(u => u && u.id !== 'user-tajammal' && !u.id.includes('tajammal') && u.email && !u.email.trim().toLowerCase().includes('tajammal') && u.email.trim().toLowerCase() !== 'no-reply@fundora.one');
         console.log('[DEBUG LOG - USERS SUBSCRIPTION SUCCESS] Loaded user emails:', users.map(u => u?.email));
         callback(users as UserAccount[]);
       } else {

@@ -125,13 +125,14 @@ export default function App() {
 
   const [transactionsList, setTransactionsList] = useState<Transaction[]>(() => {
     const saved = localStorage.getItem('inv_transactions');
-    return saved ? JSON.parse(saved) : INITIAL_TRANSACTIONS;
+    let list: Transaction[] = saved ? JSON.parse(saved) : INITIAL_TRANSACTIONS;
+    return list.filter(t => t && t.userId !== 'user-tajammal' && !(t.userId && t.userId.includes('tajammal')) && !(t.userEmail && t.userEmail.toLowerCase().includes('tajammal')));
   });
 
   const [usersListState, setUsersListState] = useState<UserAccount[]>(() => {
     const saved = localStorage.getItem('inv_users');
     let list: UserAccount[] = saved ? JSON.parse(saved) : [INITIAL_USER, INITIAL_ADMIN];
-    list = list.filter(u => u && u.id !== 'user-tajammal');
+    list = list.filter(u => u && u.id !== 'user-tajammal' && !(u.id && u.id.includes('tajammal')) && !(u.email && u.email.toLowerCase().includes('tajammal')));
     let deletedIds: string[] = [];
     let deletedEmails: string[] = [];
     try {
@@ -151,6 +152,7 @@ export default function App() {
         u && 
         u.email && 
         u.email.trim().toLowerCase() !== 'no-reply@fundora.one' &&
+        !u.email.trim().toLowerCase().includes('tajammal') &&
         !deletedIds.includes(u.id) &&
         !deletedEmails.includes(u.email.trim().toLowerCase())
       );
@@ -161,11 +163,12 @@ export default function App() {
     if (!saved) return null;
     try {
       const parsed = JSON.parse(saved);
+      if (parsed && (parsed.id === 'user-tajammal' || (parsed.id && parsed.id.includes('tajammal')) || (parsed.email && parsed.email.toLowerCase().includes('tajammal')))) {
+        localStorage.removeItem('inv_active_user');
+        return null;
+      }
       if (parsed && parsed.id === 'user-admin' && (parsed.email === 'admin@fundora.one' || parsed.email === 'no-reply@fundora.one')) {
         return { ...parsed, email: 'fundora.one@gmail.com' };
-      }
-      if (parsed && parsed.id === 'user-tajammal') {
-        return null;
       }
       return parsed;
     } catch (_) {
@@ -621,7 +624,8 @@ export default function App() {
             const parsed = JSON.parse(savedActiveUser);
             if (parsed && parsed.email) {
               const cleanE = parsed.email.toLowerCase().trim();
-              const isDeleted = deletedIds.includes(parsed.id) || deletedEmails.includes(cleanE);
+              const isTajammalUser = cleanE.includes('tajammal') || (parsed.id && parsed.id.includes('tajammal'));
+              const isDeleted = isTajammalUser || deletedIds.includes(parsed.id) || deletedEmails.includes(cleanE);
               if (isDeleted) {
                 setActiveUser(null);
                 localStorage.removeItem('inv_active_user');

@@ -38,31 +38,6 @@ export const INITIAL_PROJECTS: RealEstateProject[] = [
   }
 ];
 
-export const INITIAL_TAJAMMAL_USER: UserAccount = {
-  id: 'user-tajammal',
-  email: 'tajammalrehmat1@gmail.com',
-  name: 'Tajammal Rehmat',
-  role: 'user',
-  password: 'user123',
-  referralCode: 'TAJAMMAL405',
-  referredBy: 'ADMIN100',
-  wallet: {
-    usdtTrc20Address: '',
-    usdtBep20Address: '',
-    isVerified: false
-  },
-  balance: 0.00,
-  totalDeposited: 0.00,
-  totalWithdrawn: 0.00,
-  totalInvestment: 0.00,
-  totalProfitEarned: 0.00,
-  isEmailVerified: true,
-  registrationDate: '2026-07-31',
-  webAuthnEnabled: false,
-  webAuthnCredentialId: '',
-  webAuthnPublicKey: ''
-};
-
 export const INITIAL_USER: UserAccount = {
   id: 'user-demo',
   email: 'investor@example.com',
