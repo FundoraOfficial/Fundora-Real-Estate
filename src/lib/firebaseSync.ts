@@ -203,9 +203,9 @@ export const loadUsersFromFirebase = async (): Promise<UserAccount[] | null> => 
       const u = d.data() as UserAccount;
       if (!u) continue;
 
-      // Completely purge any tajammal account from Firestore
-      const isTajammal = d.id === 'user-tajammal' || u.id === 'user-tajammal' || Boolean(u.email && u.email.toLowerCase().includes('tajammal'));
-      if (isTajammal) {
+      // Purge old legacy demo preset user if present
+      const isLegacyDemo = d.id === 'user-tajammal' || u.id === 'user-tajammal';
+      if (isLegacyDemo) {
         try {
           await deleteDoc(doc(db, 'users', d.id));
         } catch (_) {}
@@ -252,18 +252,7 @@ export const loadTransactionsFromFirebase = async (): Promise<Transaction[] | nu
   try {
     const snapshot = await getDocs(collection(db, 'transactions'));
     if (snapshot.empty) return INITIAL_TRANSACTIONS;
-    const cleanTxs: Transaction[] = [];
-    for (const d of snapshot.docs) {
-      const tx = d.data() as Transaction;
-      const isTajammalTx = tx.userId === 'user-tajammal' || (tx.userId && tx.userId.includes('tajammal')) || Boolean(tx.userEmail && tx.userEmail.toLowerCase().includes('tajammal'));
-      if (isTajammalTx) {
-        try {
-          await deleteDoc(doc(db, 'transactions', d.id));
-        } catch (_) {}
-      } else {
-        cleanTxs.push(tx);
-      }
-    }
+    const cleanTxs: Transaction[] = snapshot.docs.map(d => d.data() as Transaction);
     return cleanTxs.sort((a, b) => b.date.localeCompare(a.date));
   } catch (e) {
     console.error('Error loading transactions from Firebase:', e);
@@ -275,19 +264,7 @@ export const loadInvestmentsFromFirebase = async (): Promise<InvestmentRecord[] 
   if (!isFirebaseEnabled()) return null;
   try {
     const snapshot = await getDocs(collection(db, 'investments'));
-    const cleanInvs: InvestmentRecord[] = [];
-    for (const d of snapshot.docs) {
-      const inv = d.data() as InvestmentRecord;
-      const isTajammalInv = inv.userId === 'user-tajammal' || (inv.userId && inv.userId.includes('tajammal')) || Boolean(inv.userEmail && inv.userEmail.toLowerCase().includes('tajammal'));
-      if (isTajammalInv) {
-        try {
-          await deleteDoc(doc(db, 'investments', d.id));
-        } catch (_) {}
-      } else {
-        cleanInvs.push(inv);
-      }
-    }
-    return cleanInvs;
+    return snapshot.docs.map(d => d.data() as InvestmentRecord);
   } catch (e) {
     console.error('Error loading investments from Firebase:', e);
     return null;
@@ -298,19 +275,7 @@ export const loadClaimsFromFirebase = async (): Promise<ProfitClaimRecord[] | nu
   if (!isFirebaseEnabled()) return null;
   try {
     const snapshot = await getDocs(collection(db, 'claims'));
-    const cleanClaims: ProfitClaimRecord[] = [];
-    for (const d of snapshot.docs) {
-      const cl = d.data() as ProfitClaimRecord;
-      const isTajammalCl = cl.userId === 'user-tajammal' || (cl.userId && cl.userId.includes('tajammal')) || Boolean(cl.userEmail && cl.userEmail.toLowerCase().includes('tajammal'));
-      if (isTajammalCl) {
-        try {
-          await deleteDoc(doc(db, 'claims', d.id));
-        } catch (_) {}
-      } else {
-        cleanClaims.push(cl);
-      }
-    }
-    return cleanClaims;
+    return snapshot.docs.map(d => d.data() as ProfitClaimRecord);
   } catch (e) {
     console.error('Error loading claims from Firebase:', e);
     return null;
@@ -523,7 +488,7 @@ export const subscribeToUsersCollection = (callback: (users: UserAccount[]) => v
             email: cleanEmail,
             password: u.password ? u.password.trim() : u.password
           };
-        }).filter(u => u && u.id !== 'user-tajammal' && !u.id.includes('tajammal') && u.email && !u.email.trim().toLowerCase().includes('tajammal') && u.email.trim().toLowerCase() !== 'no-reply@fundora.one');
+        }).filter(u => u && u.id !== 'user-tajammal' && u.email && u.email.trim().toLowerCase() !== 'no-reply@fundora.one');
         console.log('[DEBUG LOG - USERS SUBSCRIPTION SUCCESS] Loaded user emails:', users.map(u => u?.email));
         callback(users as UserAccount[]);
       } else {

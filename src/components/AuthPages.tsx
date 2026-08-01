@@ -640,20 +640,7 @@ export default function AuthPages({ initialScreen = 'login', onAuthSuccess, onNa
     // Check if user already exists locally or in live Firestore
     let existingUser = usersList.find(u => u && u.email && u.email.trim().toLowerCase() === cleanEmail);
 
-    if (cleanEmail.includes('tajammal')) {
-      if (isFirebaseEnabled()) {
-        try {
-          const q = query(collection(db, 'users'), where('email', '==', cleanEmail));
-          const snap = await getDocs(q);
-          for (const d of snap.docs) {
-            await deleteDoc(doc(db, 'users', d.id));
-          }
-        } catch (_) {}
-      }
-      existingUser = undefined;
-    }
-
-    if (!existingUser && isFirebaseEnabled() && !cleanEmail.includes('tajammal')) {
+    if (!existingUser && isFirebaseEnabled()) {
       try {
         const q = query(collection(db, 'users'), where('email', '==', cleanEmail));
         const snap = await getDocs(q);
