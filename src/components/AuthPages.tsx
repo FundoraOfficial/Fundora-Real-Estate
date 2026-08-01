@@ -914,6 +914,17 @@ export default function AuthPages({ initialScreen = 'login', onAuthSuccess, onNa
       console.error(`${tag} Step 5 ERROR: Failed to save verified user to Firestore:`, err);
     }
 
+    // Purge local deletion tombstones if any existed for this email/id
+    try {
+      const deletedEmails: string[] = JSON.parse(localStorage.getItem('inv_deleted_user_emails') || '[]');
+      const updatedEmails = deletedEmails.filter(e => e.trim().toLowerCase() !== targetEmail);
+      localStorage.setItem('inv_deleted_user_emails', JSON.stringify(updatedEmails));
+
+      const deletedIds: string[] = JSON.parse(localStorage.getItem('inv_deleted_user_ids') || '[]');
+      const updatedIds = deletedIds.filter(id => id !== newUser.id);
+      localStorage.setItem('inv_deleted_user_ids', JSON.stringify(updatedIds));
+    } catch (_) {}
+
     // Send Welcome Email to newly verified investor
     try {
       sendWelcomeEmail(newUser.email, newUser.name).catch(e => console.warn('Welcome email background send error:', e));

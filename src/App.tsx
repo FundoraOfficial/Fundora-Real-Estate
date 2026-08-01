@@ -131,7 +131,6 @@ export default function App() {
   const [usersListState, setUsersListState] = useState<UserAccount[]>(() => {
     const saved = localStorage.getItem('inv_users');
     let list: UserAccount[] = saved ? JSON.parse(saved) : [INITIAL_USER, INITIAL_ADMIN];
-    list = list.filter(u => u && u.id !== 'user-tajammal');
     let deletedIds: string[] = [];
     let deletedEmails: string[] = [];
     try {
@@ -161,10 +160,6 @@ export default function App() {
     if (!saved) return null;
     try {
       const parsed = JSON.parse(saved);
-      if (parsed && parsed.id === 'user-tajammal') {
-        localStorage.removeItem('inv_active_user');
-        return null;
-      }
       if (parsed && parsed.id === 'user-admin' && (parsed.email === 'admin@fundora.one' || parsed.email === 'no-reply@fundora.one')) {
         return { ...parsed, email: 'fundora.one@gmail.com' };
       }
@@ -597,12 +592,38 @@ export default function App() {
         } catch (_) {}
 
         if (users !== null && users.length > 0) {
+          // If a user doc exists in Firestore, Firestore is single source of truth: purge any stale local tombstone
+          let updatedDeletedEmails = [...deletedEmails];
+          let updatedDeletedIds = [...deletedIds];
+          let cleanedTombstones = false;
+
+          users.forEach(u => {
+            if (u && u.email) {
+              const cleanE = u.email.trim().toLowerCase();
+              if (updatedDeletedEmails.includes(cleanE)) {
+                updatedDeletedEmails = updatedDeletedEmails.filter(e => e !== cleanE);
+                cleanedTombstones = true;
+              }
+              if (updatedDeletedIds.includes(u.id)) {
+                updatedDeletedIds = updatedDeletedIds.filter(id => id !== u.id);
+                cleanedTombstones = true;
+              }
+            }
+          });
+
+          if (cleanedTombstones) {
+            try {
+              localStorage.setItem('inv_deleted_user_emails', JSON.stringify(updatedDeletedEmails));
+              localStorage.setItem('inv_deleted_user_ids', JSON.stringify(updatedDeletedIds));
+            } catch (_) {}
+          }
+
           const cleanUsers = users.filter(u => 
             u && 
             u.email && 
             u.email.trim().toLowerCase() !== 'no-reply@fundora.one' &&
-            !deletedIds.includes(u.id) &&
-            !deletedEmails.includes(u.email.trim().toLowerCase())
+            !updatedDeletedIds.includes(u.id) &&
+            !updatedDeletedEmails.includes(u.email.trim().toLowerCase())
           );
           setUsersListState(cleanUsers);
           safeSetLocalStorage('inv_users', JSON.stringify(cleanUsers));
@@ -679,12 +700,37 @@ export default function App() {
           deletedEmails = JSON.parse(localStorage.getItem('inv_deleted_user_emails') || '[]');
         } catch (_) {}
 
+        let updatedDeletedEmails = [...deletedEmails];
+        let updatedDeletedIds = [...deletedIds];
+        let cleanedTombstones = false;
+
+        (liveUsers || []).forEach(u => {
+          if (u && u.email) {
+            const cleanE = u.email.trim().toLowerCase();
+            if (updatedDeletedEmails.includes(cleanE)) {
+              updatedDeletedEmails = updatedDeletedEmails.filter(e => e !== cleanE);
+              cleanedTombstones = true;
+            }
+            if (updatedDeletedIds.includes(u.id)) {
+              updatedDeletedIds = updatedDeletedIds.filter(id => id !== u.id);
+              cleanedTombstones = true;
+            }
+          }
+        });
+
+        if (cleanedTombstones) {
+          try {
+            localStorage.setItem('inv_deleted_user_emails', JSON.stringify(updatedDeletedEmails));
+            localStorage.setItem('inv_deleted_user_ids', JSON.stringify(updatedDeletedIds));
+          } catch (_) {}
+        }
+
         const cleanUsers = (liveUsers || []).filter(u => 
           u && 
           u.email && 
           u.email.trim().toLowerCase() !== 'no-reply@fundora.one' &&
-          !deletedIds.includes(u.id) &&
-          !deletedEmails.includes(u.email.trim().toLowerCase())
+          !updatedDeletedIds.includes(u.id) &&
+          !updatedDeletedEmails.includes(u.email.trim().toLowerCase())
         );
 
         setUsersListState(cleanUsers);
@@ -966,6 +1012,33 @@ export default function App() {
   };
 
   const saveAndSyncUser = (user: UserAccount) => {
+    if (!user || !user.id) return;
+    const cleanE = user.email ? user.email.toLowerCase().trim() : '';
+
+    try {
+      const deletedIds: string[] = JSON.parse(localStorage.getItem('inv_deleted_user_ids') || '[]');
+      const newDeletedIds = deletedIds.filter(id => id !== user.id);
+      localStorage.setItem('inv_deleted_user_ids', JSON.stringify(newDeletedIds));
+
+      if (cleanE) {
+        const deletedEmails: string[] = JSON.parse(localStorage.getItem('inv_deleted_user_emails') || '[]');
+        const newDeletedEmails = deletedEmails.filter(e => e.toLowerCase().trim() !== cleanE);
+        localStorage.setItem('inv_deleted_user_emails', JSON.stringify(newDeletedEmails));
+      }
+    } catch (_) {}
+
+    setUsersListState(prev => {
+      const exists = prev.some(u => u.id === user.id || (u.email && u.email.toLowerCase().trim() === cleanE));
+      let updated: UserAccount[];
+      if (exists) {
+        updated = prev.map(u => (u.id === user.id || (u.email && u.email.toLowerCase().trim() === cleanE)) ? user : u);
+      } else {
+        updated = [...prev, user];
+      }
+      safeSetLocalStorage('inv_users', JSON.stringify(updated));
+      return updated;
+    });
+
     if (isFirebaseEnabled()) {
       saveUserToFirebase(user);
     }
@@ -1092,10 +1165,11 @@ export default function App() {
   // Deposit Submit proof
   const handleSubmitDeposit = (amount: number, network: 'TRC20' | 'BEP20', txHash: string, proofImg: string) => {
     if (!activeUser) return;
+    const cleanE = activeUser.email ? activeUser.email.trim().toLowerCase() : '';
     const newTx: Transaction = {
       id: `tx-dep-${Date.now()}`,
       userId: activeUser.id,
-      userEmail: activeUser.email,
+      userEmail: cleanE,
       type: 'Deposit',
       amount,
       network,
@@ -1107,9 +1181,16 @@ export default function App() {
       description: `Pending USDT ${network} Deposit proof manual verification.`
     };
 
-    setTransactionsList(prev => [newTx, ...prev]);
+    setTransactionsList(prev => {
+      const exists = prev.some(t => t.id === newTx.id);
+      if (exists) return prev;
+      const updated = [newTx, ...prev];
+      safeSetLocalStorage('inv_transactions', JSON.stringify(updated));
+      return updated;
+    });
+
     saveTransactionToFirebase(newTx);
-    addSystemLog('Admin_Action', `Pending deposit request of $${amount} USDT submitted by ${activeUser.email}. Check ledger.`, 'Info');
+    addSystemLog('Admin_Action', `Pending deposit request of $${amount} USDT submitted by ${cleanE}. Check ledger.`, 'Info');
 
     try {
       sendDepositEmail(activeUser.email, activeUser.name, amount, network, txHash, 'Submitted').catch(e => console.warn('Deposit submission email error:', e));

@@ -203,15 +203,6 @@ export const loadUsersFromFirebase = async (): Promise<UserAccount[] | null> => 
       const u = d.data() as UserAccount;
       if (!u) continue;
 
-      // Purge old legacy demo preset user if present
-      const isLegacyDemo = d.id === 'user-tajammal' || u.id === 'user-tajammal';
-      if (isLegacyDemo) {
-        try {
-          await deleteDoc(doc(db, 'users', d.id));
-        } catch (_) {}
-        continue;
-      }
-
       const originalEmail = u.email || '';
       const cleanEmail = originalEmail.trim().toLowerCase();
       let updatedUser: UserAccount = { 
@@ -488,7 +479,7 @@ export const subscribeToUsersCollection = (callback: (users: UserAccount[]) => v
             email: cleanEmail,
             password: u.password ? u.password.trim() : u.password
           };
-        }).filter(u => u && u.id !== 'user-tajammal' && u.email && u.email.trim().toLowerCase() !== 'no-reply@fundora.one');
+        }).filter(u => u && u.email && u.email.trim().toLowerCase() !== 'no-reply@fundora.one');
         console.log('[DEBUG LOG - USERS SUBSCRIPTION SUCCESS] Loaded user emails:', users.map(u => u?.email));
         callback(users as UserAccount[]);
       } else {
@@ -627,9 +618,17 @@ export const saveTransactionToFirebase = async (tx: Transaction) => {
       ...tx,
       userEmail: tx.userEmail ? tx.userEmail.trim().toLowerCase() : ''
     };
-    const cleanTx = cleanPayloadForFirestore(rawTx);
+    let cleanTx = cleanPayloadForFirestore(rawTx);
+
+    // If proofImage is present and Base64 length exceeds 400KB, truncate safely to avoid exceeding Firestore 1MB doc limit
+    if (cleanTx.proofImage && cleanTx.proofImage.length > 400000) {
+      console.warn(`[saveTransactionToFirebase] Truncating large proofImage (${cleanTx.proofImage.length} bytes) for Firestore limit.`);
+      cleanTx.proofImage = cleanTx.proofImage.slice(0, 400000);
+    }
+
     logFirestoreOp('WRITE', 'transactions', cleanTx.id, { type: cleanTx.type, amount: cleanTx.amount, userEmail: cleanTx.userEmail });
     await setDoc(doc(db, 'transactions', cleanTx.id), cleanTx);
+    console.log(`[saveTransactionToFirebase] SUCCESS written tx doc ID "${cleanTx.id}" for user "${cleanTx.userEmail}".`);
   } catch (e) {
     console.error('Failed to save transaction to Firebase:', e);
   }
