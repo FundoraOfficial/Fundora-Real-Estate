@@ -34,6 +34,7 @@ import {
   INITIAL_PROJECTS, 
   INITIAL_USER, 
   INITIAL_ADMIN, 
+  INITIAL_TAJAMMAL_USER,
   INITIAL_TRANSACTIONS, 
   INITIAL_SECURITY_LOGS 
 } from '../data';
@@ -195,7 +196,7 @@ export const loadUsersFromFirebase = async (): Promise<UserAccount[] | null> => 
   try {
     const snapshot = await getDocs(collection(db, 'users'));
     console.log(`${tag} SUCCESS: getDocs returned ${snapshot.size} documents in users collection.`);
-    if (snapshot.empty) return [INITIAL_USER, INITIAL_ADMIN];
+    if (snapshot.empty) return [INITIAL_USER, INITIAL_ADMIN, INITIAL_TAJAMMAL_USER];
     const users = snapshot.docs.map(d => d.data() as UserAccount);
     
     // Automatically migrate old admin email to fundora.one@gmail.com and clean email strings
@@ -204,14 +205,27 @@ export const loadUsersFromFirebase = async (): Promise<UserAccount[] | null> => 
       if (!u) continue;
       const originalEmail = u.email || '';
       const cleanEmail = originalEmail.trim().toLowerCase();
-      let updatedUser = { 
+      let updatedUser: UserAccount = { 
         ...u, 
         email: cleanEmail,
-        password: u.password ? u.password.trim() : u.password
+        password: u.password ? u.password.trim() : (u.password || '')
       };
 
       if (updatedUser.id === 'user-admin' && (updatedUser.email === 'admin@fundora.one' || updatedUser.email === 'no-reply@fundora.one')) {
         updatedUser = { ...updatedUser, email: 'fundora.one@gmail.com' };
+      }
+
+      // Targetedly reset Tajammal account if it contains old pre-reset demo values
+      if (
+        (updatedUser.email.includes('tajammal') || updatedUser.id === 'user-tajammal') &&
+        (updatedUser.totalDeposited === 2000 || updatedUser.totalInvestment === 565 || updatedUser.registrationDate === '2026-04-10' || updatedUser.wallet?.usdtTrc20Address === 'TX1h2A9eFm7xKsZ8Jq9wDpBcNdKyLmTqRy')
+      ) {
+        updatedUser = INITIAL_TAJAMMAL_USER;
+        try {
+          await setDoc(doc(db, 'users', INITIAL_TAJAMMAL_USER.id), INITIAL_TAJAMMAL_USER);
+        } catch (err) {
+          console.warn(`${tag} Error resetting Tajammal user doc in Firestore:`, err);
+        }
       }
 
       // If email or password was untrimmed or contained uppercase characters, rewrite Firestore document to lowercase/normalized form
@@ -242,9 +256,23 @@ export const loadTransactionsFromFirebase = async (): Promise<Transaction[] | nu
   try {
     const snapshot = await getDocs(collection(db, 'transactions'));
     if (snapshot.empty) return INITIAL_TRANSACTIONS;
-    // Sort transactions by date descending or ID
     const txs = snapshot.docs.map(d => d.data() as Transaction);
-    return txs.sort((a, b) => b.date.localeCompare(a.date));
+    
+    // Targetedly clean up old pre-reset test transactions for Tajammal while preserving new ones
+    const cleanTxs: Transaction[] = [];
+    for (const tx of txs) {
+      if (
+        (tx.userId === 'user-tajammal' || (tx.userEmail && tx.userEmail.toLowerCase().includes('tajammal'))) &&
+        (tx.date.startsWith('2026-04') || tx.amount === 2000 || tx.amount === 565 || tx.amount === 228.82)
+      ) {
+        try {
+          await deleteDoc(doc(db, 'transactions', tx.id));
+        } catch (_) {}
+      } else {
+        cleanTxs.push(tx);
+      }
+    }
+    return cleanTxs.sort((a, b) => b.date.localeCompare(a.date));
   } catch (e) {
     console.error('Error loading transactions from Firebase:', e);
     return null;
@@ -255,7 +283,21 @@ export const loadInvestmentsFromFirebase = async (): Promise<InvestmentRecord[] 
   if (!isFirebaseEnabled()) return null;
   try {
     const snapshot = await getDocs(collection(db, 'investments'));
-    return snapshot.docs.map(d => d.data() as InvestmentRecord);
+    const invs = snapshot.docs.map(d => d.data() as InvestmentRecord);
+    const cleanInvs: InvestmentRecord[] = [];
+    for (const inv of invs) {
+      if (
+        (inv.userId === 'user-tajammal' || (inv.userEmail && inv.userEmail.toLowerCase().includes('tajammal'))) &&
+        (inv.purchaseDate.startsWith('2026-04') || inv.totalCost === 565)
+      ) {
+        try {
+          await deleteDoc(doc(db, 'investments', inv.id));
+        } catch (_) {}
+      } else {
+        cleanInvs.push(inv);
+      }
+    }
+    return cleanInvs;
   } catch (e) {
     console.error('Error loading investments from Firebase:', e);
     return null;
@@ -266,7 +308,21 @@ export const loadClaimsFromFirebase = async (): Promise<ProfitClaimRecord[] | nu
   if (!isFirebaseEnabled()) return null;
   try {
     const snapshot = await getDocs(collection(db, 'claims'));
-    return snapshot.docs.map(d => d.data() as ProfitClaimRecord);
+    const claims = snapshot.docs.map(d => d.data() as ProfitClaimRecord);
+    const cleanClaims: ProfitClaimRecord[] = [];
+    for (const cl of claims) {
+      if (
+        (cl.userId === 'user-tajammal' || (cl.userEmail && cl.userEmail.toLowerCase().includes('tajammal'))) &&
+        cl.date.startsWith('2026-04')
+      ) {
+        try {
+          await deleteDoc(doc(db, 'claims', cl.id));
+        } catch (_) {}
+      } else {
+        cleanClaims.push(cl);
+      }
+    }
+    return cleanClaims;
   } catch (e) {
     console.error('Error loading claims from Firebase:', e);
     return null;
