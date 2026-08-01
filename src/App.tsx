@@ -17,7 +17,7 @@ import ApkDownloadModal from './components/ApkDownloadModal';
 import { CommunityHub } from './components/CommunityHub';
 import { FloatingAiAssistant } from './components/FloatingAiAssistant';
 import { RealEstateProject, Transaction, UserAccount, InvestmentRecord, ProfitClaimRecord, SecurityLog, SystemSettings, Inquiry } from './types';
-import { INITIAL_PROJECTS, INITIAL_USER, INITIAL_ADMIN, INITIAL_TAJAMMAL_USER, INITIAL_TRANSACTIONS, INITIAL_SECURITY_LOGS } from './data';
+import { INITIAL_PROJECTS, INITIAL_USER, INITIAL_ADMIN, INITIAL_TRANSACTIONS, INITIAL_SECURITY_LOGS } from './data';
 import { 
   seedInitialDataIfEmpty,
   loadProjectsFromFirebase,
@@ -130,10 +130,8 @@ export default function App() {
 
   const [usersListState, setUsersListState] = useState<UserAccount[]>(() => {
     const saved = localStorage.getItem('inv_users');
-    let list: UserAccount[] = saved ? JSON.parse(saved) : [INITIAL_USER, INITIAL_ADMIN, INITIAL_TAJAMMAL_USER];
-    if (!list.some(u => u && u.email && u.email.trim().toLowerCase() === 'tajammalrehmat1@gmail.com')) {
-      list.push(INITIAL_TAJAMMAL_USER);
-    }
+    let list: UserAccount[] = saved ? JSON.parse(saved) : [INITIAL_USER, INITIAL_ADMIN];
+    list = list.filter(u => u && u.id !== 'user-tajammal');
     let deletedIds: string[] = [];
     let deletedEmails: string[] = [];
     try {
@@ -146,12 +144,6 @@ export default function App() {
         if (!u) return u;
         if (u.id === 'user-admin' && (u.email === 'admin@fundora.one' || u.email === 'no-reply@fundora.one')) {
           return { ...u, email: 'fundora.one@gmail.com' };
-        }
-        if (
-          (u.email && u.email.trim().toLowerCase().includes('tajammal') || u.id === 'user-tajammal') &&
-          (u.totalDeposited === 2000 || u.totalInvestment === 565 || u.wallet?.usdtTrc20Address === 'TX1h2A9eFm7xKsZ8Jq9wDpBcNdKyLmTqRy')
-        ) {
-          return INITIAL_TAJAMMAL_USER;
         }
         return u;
       })
@@ -172,12 +164,8 @@ export default function App() {
       if (parsed && parsed.id === 'user-admin' && (parsed.email === 'admin@fundora.one' || parsed.email === 'no-reply@fundora.one')) {
         return { ...parsed, email: 'fundora.one@gmail.com' };
       }
-      if (
-        parsed && 
-        ((parsed.email && parsed.email.trim().toLowerCase().includes('tajammal')) || parsed.id === 'user-tajammal') &&
-        (parsed.totalDeposited === 2000 || parsed.totalInvestment === 565 || parsed.wallet?.usdtTrc20Address === 'TX1h2A9eFm7xKsZ8Jq9wDpBcNdKyLmTqRy')
-      ) {
-        return INITIAL_TAJAMMAL_USER;
+      if (parsed && parsed.id === 'user-tajammal') {
+        return null;
       }
       return parsed;
     } catch (_) {

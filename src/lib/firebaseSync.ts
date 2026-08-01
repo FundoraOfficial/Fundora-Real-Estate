@@ -34,7 +34,6 @@ import {
   INITIAL_PROJECTS, 
   INITIAL_USER, 
   INITIAL_ADMIN, 
-  INITIAL_TAJAMMAL_USER,
   INITIAL_TRANSACTIONS, 
   INITIAL_SECURITY_LOGS 
 } from '../data';
@@ -196,13 +195,22 @@ export const loadUsersFromFirebase = async (): Promise<UserAccount[] | null> => 
   try {
     const snapshot = await getDocs(collection(db, 'users'));
     console.log(`${tag} SUCCESS: getDocs returned ${snapshot.size} documents in users collection.`);
-    if (snapshot.empty) return [INITIAL_USER, INITIAL_ADMIN, INITIAL_TAJAMMAL_USER];
-    const users = snapshot.docs.map(d => d.data() as UserAccount);
+    if (snapshot.empty) return [INITIAL_USER, INITIAL_ADMIN];
     
     // Automatically migrate old admin email to fundora.one@gmail.com and clean email strings
     const cleanedUsers: UserAccount[] = [];
-    for (const u of users) {
+    for (const d of snapshot.docs) {
+      const u = d.data() as UserAccount;
       if (!u) continue;
+
+      // Completely purge legacy user-tajammal demo account from Firestore
+      if (d.id === 'user-tajammal' || u.id === 'user-tajammal') {
+        try {
+          await deleteDoc(doc(db, 'users', d.id));
+        } catch (_) {}
+        continue;
+      }
+
       const originalEmail = u.email || '';
       const cleanEmail = originalEmail.trim().toLowerCase();
       let updatedUser: UserAccount = { 
@@ -213,19 +221,6 @@ export const loadUsersFromFirebase = async (): Promise<UserAccount[] | null> => 
 
       if (updatedUser.id === 'user-admin' && (updatedUser.email === 'admin@fundora.one' || updatedUser.email === 'no-reply@fundora.one')) {
         updatedUser = { ...updatedUser, email: 'fundora.one@gmail.com' };
-      }
-
-      // Targetedly reset Tajammal account if it contains old pre-reset demo values
-      if (
-        (updatedUser.email.includes('tajammal') || updatedUser.id === 'user-tajammal') &&
-        (updatedUser.totalDeposited === 2000 || updatedUser.totalInvestment === 565 || updatedUser.registrationDate === '2026-04-10' || updatedUser.wallet?.usdtTrc20Address === 'TX1h2A9eFm7xKsZ8Jq9wDpBcNdKyLmTqRy')
-      ) {
-        updatedUser = INITIAL_TAJAMMAL_USER;
-        try {
-          await setDoc(doc(db, 'users', INITIAL_TAJAMMAL_USER.id), INITIAL_TAJAMMAL_USER);
-        } catch (err) {
-          console.warn(`${tag} Error resetting Tajammal user doc in Firestore:`, err);
-        }
       }
 
       // If email or password was untrimmed or contained uppercase characters, rewrite Firestore document to lowercase/normalized form
@@ -256,17 +251,15 @@ export const loadTransactionsFromFirebase = async (): Promise<Transaction[] | nu
   try {
     const snapshot = await getDocs(collection(db, 'transactions'));
     if (snapshot.empty) return INITIAL_TRANSACTIONS;
-    const txs = snapshot.docs.map(d => d.data() as Transaction);
-    
-    // Targetedly clean up old pre-reset test transactions for Tajammal while preserving new ones
     const cleanTxs: Transaction[] = [];
-    for (const tx of txs) {
+    for (const d of snapshot.docs) {
+      const tx = d.data() as Transaction;
       if (
-        (tx.userId === 'user-tajammal' || (tx.userEmail && tx.userEmail.toLowerCase().includes('tajammal'))) &&
-        (tx.date.startsWith('2026-04') || tx.amount === 2000 || tx.amount === 565 || tx.amount === 228.82)
+        tx.userId === 'user-tajammal' || 
+        (tx.userEmail && tx.userEmail.toLowerCase().includes('tajammal') && (tx.date.startsWith('2026-04') || tx.date.startsWith('2026-07') || tx.amount === 2000 || tx.amount === 565 || tx.amount === 228.82))
       ) {
         try {
-          await deleteDoc(doc(db, 'transactions', tx.id));
+          await deleteDoc(doc(db, 'transactions', d.id));
         } catch (_) {}
       } else {
         cleanTxs.push(tx);
@@ -283,15 +276,15 @@ export const loadInvestmentsFromFirebase = async (): Promise<InvestmentRecord[] 
   if (!isFirebaseEnabled()) return null;
   try {
     const snapshot = await getDocs(collection(db, 'investments'));
-    const invs = snapshot.docs.map(d => d.data() as InvestmentRecord);
     const cleanInvs: InvestmentRecord[] = [];
-    for (const inv of invs) {
+    for (const d of snapshot.docs) {
+      const inv = d.data() as InvestmentRecord;
       if (
-        (inv.userId === 'user-tajammal' || (inv.userEmail && inv.userEmail.toLowerCase().includes('tajammal'))) &&
-        (inv.purchaseDate.startsWith('2026-04') || inv.totalCost === 565)
+        inv.userId === 'user-tajammal' || 
+        (inv.userEmail && inv.userEmail.toLowerCase().includes('tajammal') && (inv.purchaseDate.startsWith('2026-04') || inv.purchaseDate.startsWith('2026-07') || inv.totalCost === 565))
       ) {
         try {
-          await deleteDoc(doc(db, 'investments', inv.id));
+          await deleteDoc(doc(db, 'investments', d.id));
         } catch (_) {}
       } else {
         cleanInvs.push(inv);
@@ -308,15 +301,15 @@ export const loadClaimsFromFirebase = async (): Promise<ProfitClaimRecord[] | nu
   if (!isFirebaseEnabled()) return null;
   try {
     const snapshot = await getDocs(collection(db, 'claims'));
-    const claims = snapshot.docs.map(d => d.data() as ProfitClaimRecord);
     const cleanClaims: ProfitClaimRecord[] = [];
-    for (const cl of claims) {
+    for (const d of snapshot.docs) {
+      const cl = d.data() as ProfitClaimRecord;
       if (
-        (cl.userId === 'user-tajammal' || (cl.userEmail && cl.userEmail.toLowerCase().includes('tajammal'))) &&
-        cl.date.startsWith('2026-04')
+        cl.userId === 'user-tajammal' || 
+        (cl.userEmail && cl.userEmail.toLowerCase().includes('tajammal') && (cl.date.startsWith('2026-04') || cl.date.startsWith('2026-07')))
       ) {
         try {
-          await deleteDoc(doc(db, 'claims', cl.id));
+          await deleteDoc(doc(db, 'claims', d.id));
         } catch (_) {}
       } else {
         cleanClaims.push(cl);
@@ -535,7 +528,7 @@ export const subscribeToUsersCollection = (callback: (users: UserAccount[]) => v
             email: cleanEmail,
             password: u.password ? u.password.trim() : u.password
           };
-        }).filter(u => u && u.email && u.email.trim().toLowerCase() !== 'no-reply@fundora.one');
+        }).filter(u => u && u.id !== 'user-tajammal' && u.email && u.email.trim().toLowerCase() !== 'no-reply@fundora.one');
         console.log('[DEBUG LOG - USERS SUBSCRIPTION SUCCESS] Loaded user emails:', users.map(u => u?.email));
         callback(users as UserAccount[]);
       } else {
