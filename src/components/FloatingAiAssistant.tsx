@@ -19,6 +19,7 @@ import {
   Move
 } from 'lucide-react';
 import { UserAccount } from '../types';
+import { generateSmartFundoraAnswer } from '../lib/aiKnowledgeEngine';
 
 interface FloatingAiAssistantProps {
   currentUser?: UserAccount | null;
@@ -164,25 +165,28 @@ export const FloatingAiAssistant: React.FC<FloatingAiAssistantProps> = ({
       });
 
       const data = await response.json();
+      const smartFallback = generateSmartFundoraAnswer(messageText, language);
       
       const assistantMsg: ChatMessage = {
         id: `ai-${Date.now()}`,
         sender: 'assistant',
-        text: data.reply || "At Fundora, minimum deposit is 10 USDT via TRC20/BEP20. You earn 0.8% - 1.5% daily yields.",
+        text: data.reply || smartFallback.reply,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        escalate: data.escalate
+        escalate: data.escalate !== undefined ? data.escalate : smartFallback.escalate
       };
 
       setMessages(prev => [...prev, assistantMsg]);
     } catch (err) {
       console.error('[AI Assistant Client Error]', err);
+      const smartFallback = generateSmartFundoraAnswer(messageText, language);
       setMessages(prev => [
         ...prev,
         {
           id: `ai-err-${Date.now()}`,
           sender: 'assistant',
-          text: "Fundora AI is fully active. Deposit minimum is 10 USDT (TRC20/BEP20) with 0.8%-1.5% daily rental yields. Need human help? Email support at fundora.one@gmail.com.",
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          text: smartFallback.reply,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          escalate: smartFallback.escalate
         }
       ]);
     } finally {
@@ -191,13 +195,14 @@ export const FloatingAiAssistant: React.FC<FloatingAiAssistantProps> = ({
   };
 
   const quickQuestions = [
-    { label: '💬 Community Chat', query: 'Where is the Community Chat channel and how can I join?' },
-    { label: '💰 How to Deposit?', query: 'How to deposit USDT on Fundora?' },
-    { label: '📊 Rental Yields?', query: 'Explain daily rental yields and profit claims.' },
-    { label: '👥 Referral System', query: 'How does the multi-tier referral bonus work?' },
-    { label: '🇵🇰 Urdu Guidance', query: 'فنڈورا کمیونٹی اور پلیٹ فارم کے بارے میں بتائیں۔' },
-    { label: '🇸🇦 Arabic Guidance', query: 'معلومات عن القناة الجماعية ومنصة فندورا للاستثمار العقاري' },
-    { label: '🏛️ Legal & UK Reg', query: 'Is Fundora legally registered in the UK?' }
+    { label: '📊 Property ROI', query: 'What is the current property ROI and yield schedule for Emaar Downtown Dubai?' },
+    { label: '💳 How to Deposit?', query: 'How to deposit USDT on Fundora via TRC20 or BEP20?' },
+    { label: '🏛️ UK Legal Reg', query: 'What is Fundora UK Companies House registration number and legal standing?' },
+    { label: '📱 Mobile APK App', query: 'How to download the official Fundora Android Mobile App APK?' },
+    { label: '💸 Minimum Withdrawal', query: 'What is the minimum withdrawal limit and payout processing time?' },
+    { label: '👥 Referral Rewards', query: 'Explain the 10% direct referral bonus and multi-tier rewards.' },
+    { label: '🇵🇰 Urdu Guidance', query: 'فنڈورا پر انویسٹمنٹ اور یو ایس ڈی ٹی ڈپازٹ کا طریقہ بتائیں۔' },
+    { label: '🇸🇦 Arabic Guidance', query: 'معلومات عن منصة فندورا للاستثمار العقاري وكيفية الإيداع' }
   ];
 
   return (

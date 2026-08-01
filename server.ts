@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import nodemailer from "nodemailer";
 import { GoogleGenAI, Type } from "@google/genai";
 import { Readable } from "stream";
+import { generateSmartFundoraAnswer, searchStructuredFAQ } from "./src/lib/aiKnowledgeEngine";
 
 // Load environment variables from .env
 dotenv.config();
@@ -643,29 +644,32 @@ If you didn't request this verification, simply ignore this email.
 
   // Fundora Knowledge Base System Prompt
   const FUNDORA_SYSTEM_PROMPT = `You are Fundora AI Assistant, the official AI concierge for Fundora Real Estate Platform (fundora.one).
-You assist investors worldwide with verified platform knowledge in multiple languages including English, Urdu, Arabic, Pashto, Hindi, Bengali, Spanish, French, Turkish, Chinese, etc.
+You assist investors worldwide with verified platform knowledge in multiple languages including English, Urdu, Roman Urdu, Arabic, Pashto, Hindi, Bengali, Spanish, French, Turkish, Chinese, etc.
 
-FUNDORA PLATFORM FACTS:
-- Official Registered Entity: Fundora Real Estate Investment Platform (UK Companies House No. 16870956).
-- Website: https://fundora.one
-- Official Mobile App: YES! Fundora has an official downloadable Android Mobile App (Fundora APK) available directly on our website! Users can click the "Download App" / "Android APK" button in the top navigation bar or menu to download and install the app on Android devices.
-- Core Mission: Fractional real estate co-ownership in prime UK & Dubai residential/commercial properties starting from 10 USDT.
-- Daily Rental Yields: Earn 0.8% to 1.5% daily rental yields paid every 24 hours directly into user account balance. Instant profit claims available.
-- Minimum Deposit: 10 USDT (TRC20 & BEP20 accepted).
-- Minimum Withdrawal: 5 USDT (Processed via automated blockchain queue or within 1-24 hours).
+FUNDORA PLATFORM FACTS & OFFICIAL DOCUMENTATION:
+- Official Registered Entity: Fundora Real Estate Investment Platform Ltd (UK Companies House Registration No. 16870956).
+- Official Website: https://fundora.one
+- Official Support Email: fundora.one@gmail.com
+- Official Mobile App: YES! Fundora provides an official downloadable Android Mobile App (Fundora APK) available directly on our website! Users can click the "Download App" / "Android APK" button in the top navigation bar or menu.
+- Core Mission: Fractional real estate co-ownership in prime UK & Dubai residential/commercial properties starting from 10 USDT deposit, $113 share price.
+- Current Active Property ROI:
+  * Emaar Downtown Boulevard Suites (Downtown Dubai, UAE): 40.5% Annual ROI (~1.2% Daily Yield), $113 per share, 2-month duration, 920 shares available out of 1800.
+  * Kensington Palace Gardens Suites (Kensington, London, UK): 14.8% Annual ROI (~0.9% Daily Yield), $150 per share (Sold Out).
+- Daily Rental Yields: Earn 0.8% to 1.5% daily rental yields paid every 24 hours directly into user account balance. Instant profit claims available on Overview dashboard via 'Claim Profit' button.
+- Deposit Procedures: Minimum deposit 10 USDT (TRC20 & BEP20 accepted). Users copy official wallet address, transfer USDT, paste TxHash/Screenshot, submit deposit. Processing takes 5-30 minutes.
+- Withdrawal Procedures: Minimum withdrawal 10 USDT (TRC20 & BEP20). Processed via automated security queue within 1-24 hours.
 - Multi-tier Referral Rewards:
-  * Bronze Shield: 10% cash reward on 1st deposit.
-  * Silver Partner ($500+ or 3 refs): Access to high yield properties + fast track claims.
-  * Gold Director ($2,000+ or 5 refs): Priority fast-track auditing + 5% yield boost vouchers.
-  * Platinum Trustee ($10,500+ or 10 refs): VIP direct support + exclusive co-ownership rights.
-- Support Contact: fundora.one@gmail.com
+  * Bronze Shield (Level 1): 10% instant cash reward on direct 1st deposit.
+  * Silver Partner (Level 2): 5% commission ($500 team volume or 3 active members).
+  * Gold Director (Level 3): 2% commission + 5% yield boost vouchers ($2,000+ volume).
+  * Platinum Trustee (Level 4): VIP direct support + exclusive co-ownership rights ($10,500+ volume).
 
 RULES FOR AI ASSISTANT:
-1. Always be polite, professional, concise, and helpful.
-2. Answer in the exact language requested by the user or specified in the prompt (English, Urdu, Arabic, Pashto, Hindi, Bengali, Spanish, French, Turkish, Chinese, etc.).
-3. Confirm clearly that Fundora HAS an official Mobile App available for download via the "Download App" button on the website.
-4. Use exact platform figures. Do NOT invent unmentioned features or guarantee fake investment returns.
-5. If a user asks a complex account complaint, requests account deactivation, or asks to speak to a human, trigger escalation mode by concluding with: "[ESCALATE_TO_HUMAN]".
+1. Direct Answers: Answer the user's specific question directly, concisely, and accurately using structured FAQ knowledge. Do NOT paste a generic welcome message or generic platform overview when answering a specific question.
+2. Language Matching: Answer in the EXACT language used by the user (English, Urdu script, Roman Urdu, Arabic, etc.). If the user asks in Roman Urdu (e.g. "deposit kaise karein"), reply in friendly Roman Urdu. If in Urdu script, reply in Urdu script.
+3. Mobile App: If asked about the mobile app/APK, confirm that Fundora has an official Android App downloadable via the "Download App" button in the top menu bar.
+4. Financial Transparency: Use exact platform numbers (10 USDT min deposit, 40.5% ROI for Emaar Dubai, 0.8%-1.5% daily yield, 10 USDT min withdraw). Never invent fake promises or unverified figures.
+5. Escalation: If a user asks a complex account complaint or asks to speak to a human/admin/support, append "[ESCALATE_TO_HUMAN]" at the end.
 
 Respond clearly using rich formatting (bolding key terms).`;
 
@@ -677,14 +681,18 @@ Respond clearly using rich formatting (bolding key terms).`;
     }
 
     try {
+      const faqResult = searchStructuredFAQ(message, language || "en");
       const ai = getGeminiClient(req);
+
       if (!ai) {
+        const smartFallback = faqResult.matched && faqResult.reply
+          ? { reply: faqResult.reply, escalate: faqResult.escalate }
+          : generateSmartFundoraAnswer(message, language || "en");
+
         return res.json({
           success: true,
-          reply: language === "ur"
-            ? "Fundora AI Assistant filhal aamada hai. Platform ke bare me koi sawal ho to humse fundora.one@gmail.com par rabta karein."
-            : "Fundora AI Assistant is active. Minimum deposit is 10 USDT, daily yields 0.8%-1.5%. For direct support email fundora.one@gmail.com.",
-          escalate: false
+          reply: smartFallback.reply,
+          escalate: smartFallback.escalate
         });
       }
 
@@ -692,15 +700,45 @@ Respond clearly using rich formatting (bolding key terms).`;
         ? chatHistory.map((h: any) => `${h.sender === "user" ? "User" : "Assistant"}: ${h.text}`).join("\n")
         : "";
 
-      const prompt = `${FUNDORA_SYSTEM_PROMPT}\n\nRecent Conversation History:\n${formattedHistory}\n\nUser Question (${language || "en"}): ${message}\n\nAssistant Answer:`;
+      const faqContext = faqResult.retrievedContext 
+        ? `\n\nSTRUCTURED FAQ RETRIEVAL CONTEXT:\n${faqResult.retrievedContext}\n` 
+        : "";
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.6-flash",
-        contents: prompt
-      });
+      const prompt = `${FUNDORA_SYSTEM_PROMPT}${faqContext}\n\nRecent Conversation History:\n${formattedHistory}\n\nUser Question (${language || "en"}): "${message}"\n\nDirect Answer:`;
 
-      const text = response?.text || "";
-      const shouldEscalate = text.includes("[ESCALATE_TO_HUMAN]") || message.toLowerCase().includes("human") || message.toLowerCase().includes("admin");
+      const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-3.6-flash", "gemini-flash-latest"];
+      let text = "";
+      let lastAiErr = null;
+
+      for (const modelName of modelsToTry) {
+        try {
+          const aiRes = await ai.models.generateContent({
+            model: modelName,
+            contents: prompt
+          });
+          if (aiRes && aiRes.text && aiRes.text.trim()) {
+            text = aiRes.text.trim();
+            break;
+          }
+        } catch (mErr: any) {
+          lastAiErr = mErr;
+          console.warn(`[AI Assistant] Model ${modelName} failed:`, mErr?.message || mErr);
+        }
+      }
+
+      if (!text.trim()) {
+        const smartFallback = faqResult.matched && faqResult.reply
+          ? { reply: faqResult.reply, escalate: faqResult.escalate }
+          : generateSmartFundoraAnswer(message, language || "en");
+
+        return res.json({
+          success: true,
+          reply: smartFallback.reply,
+          escalate: smartFallback.escalate
+        });
+      }
+
+      const shouldEscalate = text.includes("[ESCALATE_TO_HUMAN]") || message.toLowerCase().includes("human") || message.toLowerCase().includes("admin") || faqResult.escalate;
       const cleanReply = text.replace("[ESCALATE_TO_HUMAN]", "").trim();
 
       return res.json({
@@ -710,10 +748,15 @@ Respond clearly using rich formatting (bolding key terms).`;
       });
     } catch (err: any) {
       console.warn("[AI Assistant Proxy Error]", err?.message || err);
+      const faqResult = searchStructuredFAQ(message, language || "en");
+      const smartFallback = faqResult.matched && faqResult.reply
+        ? { reply: faqResult.reply, escalate: faqResult.escalate }
+        : generateSmartFundoraAnswer(message, language || "en");
+
       return res.json({
         success: true,
-        reply: "Welcome to Fundora! Minimum deposit is 10 USDT via TRC20/BEP20. Rental yields are 0.8%-1.5% daily.",
-        escalate: false
+        reply: smartFallback.reply,
+        escalate: smartFallback.escalate
       });
     }
   });
@@ -722,27 +765,53 @@ Respond clearly using rich formatting (bolding key terms).`;
   app.post("/api/ai/community-reply", async (req, res) => {
     const { promptText, channelName } = req.body;
     try {
+      const faqResult = searchStructuredFAQ(promptText || "", "en");
       const ai = getGeminiClient(req);
       if (!ai) {
+        const smartFallback = faqResult.matched && faqResult.reply
+          ? { reply: faqResult.reply, escalate: faqResult.escalate }
+          : generateSmartFundoraAnswer(promptText || "", "en", channelName);
+
         return res.json({
           success: true,
-          reply: `🤖 **Fundora AI Agent**: Thanks for asking in #${channelName || "community"}! Minimum deposit is 10 USDT. Daily yields are 0.8%-1.5%.`
+          reply: smartFallback.reply
         });
       }
 
+      const faqContext = faqResult.retrievedContext 
+        ? `\n\nSTRUCTURED FAQ RETRIEVAL CONTEXT:\n${faqResult.retrievedContext}\n` 
+        : "";
+
       const response = await ai.models.generateContent({
         model: "gemini-3.6-flash",
-        contents: `${FUNDORA_SYSTEM_PROMPT}\n\nA member posted this in channel #${channelName || "community"}:\n"${promptText}"\n\nProvide a helpful 2-3 sentence community answer as "Fundora Community AI":`
+        contents: `${FUNDORA_SYSTEM_PROMPT}${faqContext}\n\nA member posted this question in channel/DM "${channelName || "Community"}":\n"${promptText}"\n\nProvide a direct, friendly, and precise answer specifically addressing their question in the same language as the input (Urdu, Roman Urdu, Arabic, English, etc.):`
       });
+
+      const text = response?.text || "";
+      if (!text.trim()) {
+        const smartFallback = faqResult.matched && faqResult.reply
+          ? { reply: faqResult.reply, escalate: faqResult.escalate }
+          : generateSmartFundoraAnswer(promptText || "", "en", channelName);
+
+        return res.json({
+          success: true,
+          reply: smartFallback.reply
+        });
+      }
 
       return res.json({
         success: true,
-        reply: response?.text || "Welcome to Fundora Community! Feel free to ask any real estate investment questions."
+        reply: text
       });
     } catch (err: any) {
+      const faqResult = searchStructuredFAQ(promptText || "", "en");
+      const smartFallback = faqResult.matched && faqResult.reply
+        ? { reply: faqResult.reply, escalate: faqResult.escalate }
+        : generateSmartFundoraAnswer(promptText || "", "en", channelName);
+
       return res.json({
         success: true,
-        reply: "🤖 **Fundora AI Agent**: Minimum deposit is 10 USDT with daily claims of 0.8%-1.5% yields!"
+        reply: smartFallback.reply
       });
     }
   });

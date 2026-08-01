@@ -52,6 +52,7 @@ import {
   MemberRole, 
   CommunityJoinRequest 
 } from '../types';
+import { generateSmartFundoraAnswer } from '../lib/aiKnowledgeEngine';
 import { db } from '../lib/firebase';
 import { 
   collection, 
@@ -155,15 +156,6 @@ const INITIAL_MESSAGES: Record<string, CommunityMessage[]> = {
 };
 
 const MOCK_TRUSTEES = [
-  {
-    id: 'ai-assistant',
-    name: 'Fundora AI Agent',
-    email: 'ai@fundora.one',
-    role: 'Admin',
-    avatar: '🤖',
-    status: 'Online',
-    bio: '24/7 AI Real Estate & Yield Advisor'
-  },
   {
     id: 'admin-1',
     name: 'Fundora Support Team',
@@ -407,9 +399,14 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
       }
     }
 
-    // Check if user tagged @AI or asking AI
-    if (msg.text.includes('@AI') || msg.text.toLowerCase().includes('help') || msg.text.toLowerCase().includes('yield')) {
-      triggerAiCommunityReply(msg.text);
+    const isAiDm = msg.channelId === 'dm-ai-assistant' || msg.channelId === 'dm-ai-bot' || msg.channelId.startsWith('dm-ai-');
+    const isSenderUser = msg.senderId !== 'ai-assistant' && msg.senderId !== 'ai-bot';
+
+    // Auto-reply if message is sent in DM to AI Agent or if @AI is tagged in a channel
+    if (isAiDm && isSenderUser) {
+      triggerAiCommunityReply(msg.text, msg.channelId);
+    } else if (isSenderUser && (msg.text.includes('@AI') || msg.text.toLowerCase().includes('help') || msg.text.toLowerCase().includes('yield') || msg.text.toLowerCase().includes('deposit'))) {
+      triggerAiCommunityReply(msg.text, msg.channelId);
     }
 
     // Executive auto-response from Ethan Chiu if a member sends a DM to Ethan Chiu
@@ -431,32 +428,52 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
     }
   };
 
-  const triggerAiCommunityReply = async (promptText: string) => {
+  const triggerAiCommunityReply = async (promptText: string, targetChannelId?: string) => {
+    const channelId = targetChannelId || activeChannelId;
+    const chanName = channels.find(c => c.id === channelId)?.name || 'Direct Message';
     try {
       const res = await fetch('/api/ai/community-reply', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ promptText, channelName: activeChannel.name })
+        body: JSON.stringify({ promptText, channelName: chanName })
       });
       const data = await res.json();
-      if (data.success && data.reply) {
-        setTimeout(async () => {
-          const aiMsg: CommunityMessage = {
-            id: `ai-msg-${Date.now()}`,
-            channelId: activeChannelId,
-            senderId: 'ai-bot',
-            senderName: 'Fundora AI Agent',
-            senderEmail: 'ai@fundora.one',
-            senderRole: 'Admin',
-            text: data.reply,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            isAiGenerated: true
-          };
-          await saveMessage(aiMsg);
-        }, 1000);
-      }
+      const smartFallback = generateSmartFundoraAnswer(promptText, 'en', chanName);
+      const replyText = (data.success && data.reply) ? data.reply : smartFallback.reply;
+      
+      setTimeout(async () => {
+        const aiMsg: CommunityMessage = {
+          id: `ai-msg-${Date.now()}`,
+          channelId: channelId,
+          senderId: 'ai-assistant',
+          senderName: 'Fundora AI Agent',
+          senderEmail: 'ai@fundora.one',
+          senderAvatar: '🤖',
+          senderRole: 'Admin',
+          text: replyText,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          isAiGenerated: true
+        };
+        await saveMessage(aiMsg);
+      }, 1000);
     } catch (e) {
       console.warn("AI reply error", e);
+      const smartFallback = generateSmartFundoraAnswer(promptText, 'en', chanName);
+      setTimeout(async () => {
+        const aiMsg: CommunityMessage = {
+          id: `ai-msg-${Date.now()}`,
+          channelId: channelId,
+          senderId: 'ai-assistant',
+          senderName: 'Fundora AI Agent',
+          senderEmail: 'ai@fundora.one',
+          senderAvatar: '🤖',
+          senderRole: 'Admin',
+          text: smartFallback.reply,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          isAiGenerated: true
+        };
+        await saveMessage(aiMsg);
+      }, 1000);
     }
   };
 

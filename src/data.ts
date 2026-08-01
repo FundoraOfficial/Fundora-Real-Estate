@@ -31,7 +31,7 @@ export const INITIAL_PROJECTS: RealEstateProject[] = [
     availableShares: 920,
     pricePerShare: 113,
     expectedRoi: 40.5,
-    durationMonths: 24,
+    durationMonths: 2,
     description: 'Ultra-luxurious serviced apartments situated directly opposite Burj Khalifa. Managed by the Emaar hospitality group, offering premium tax-free rental yields and high-frequency capital appreciation.',
     status: 'Active',
     documents: ['Emaar_Downtown_Specs.pdf', 'Emaar_Downtown_Approval.pdf', 'Emaar_Downtown_NOC.pdf']
