@@ -1,4 +1,7 @@
 import { jsPDF } from 'jspdf';
+import { Capacitor } from '@capacitor/core';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
 
 export function showPdfToast(message: string, isError = false) {
   try {
@@ -48,151 +51,52 @@ export function showPdfToast(message: string, isError = false) {
 }
 
 export async function saveOrSharePDF(doc: jsPDF, filename: string) {
-  const ua = navigator.userAgent || '';
-  const isAndroid = /Android/i.test(ua);
-  const isWebView = /wv|WebView|Version\/[0-9.]+/i.test(ua) || 
-    Boolean((window as any).Android) || 
-    Boolean((window as any).Capacitor) || 
-    Boolean((window as any).Cordova);
+  const isNative = Capacitor.isNativePlatform() || Capacitor.getPlatform() === 'android';
 
-  console.log(`[PDF Engine] Initiating download for ${filename} (Android: ${isAndroid}, WebView: ${isWebView})`);
+  if (isNative) {
+    try {
+      console.log(`[PDF Native Engine] Processing native PDF download for Android: ${filename}`);
+      const dataUri = doc.output('datauristring');
+      const base64Data = dataUri.split(',')[1];
 
-  try {
-    const pdfBlob = doc.output('blob');
-    const dataUri = doc.output('datauristring');
-    const base64Data = dataUri.split(',')[1];
+      // 1. Write file natively to Android Documents directory
+      const saveResult = await Filesystem.writeFile({
+        path: filename,
+        data: base64Data,
+        directory: Directory.Documents,
+        recursive: true
+      });
 
-    // 1. Check for Capacitor Native Plugins (Filesystem & Share)
-    const capacitor = (window as any).Capacitor;
-    if (capacitor?.Plugins?.Filesystem) {
+      console.log('[PDF Native Engine] Native file save successful:', saveResult.uri);
+      showPdfToast(`PDF saved: ${filename}`);
+
+      // 2. Open Android native Share Sheet for instant opening/sharing/saving
       try {
-        const { Filesystem, Share, Directory } = capacitor.Plugins;
-        const targetDir = Directory?.Documents || Directory?.ExternalStorage || Directory?.Cache || 'DOCUMENTS';
-        
-        const writeResult = await Filesystem.writeFile({
-          path: filename,
-          data: base64Data,
-          directory: targetDir,
-          recursive: true,
+        await Share.share({
+          title: filename,
+          text: `Fundora PDF Receipt: ${filename}`,
+          url: saveResult.uri,
+          dialogTitle: 'Save or Share PDF Receipt'
         });
-
-        showPdfToast(`PDF Receipt saved: ${filename}`);
-
-        if (Share) {
-          try {
-            await Share.share({
-              title: filename,
-              text: `Fundora Receipt: ${filename}`,
-              url: writeResult.uri || writeResult.filepath,
-              dialogTitle: 'Save or Share PDF Receipt',
-            });
-          } catch (shareErr) {
-            console.warn('[PDF] Capacitor Share dismissed or failed:', shareErr);
-          }
-        }
-        return;
-      } catch (capErr) {
-        console.warn('[PDF] Capacitor Filesystem failed:', capErr);
-      }
-    }
-
-    // 2. Check for Native Android JS Bridge (`window.Android`)
-    const androidBridge = (window as any).Android;
-    if (androidBridge) {
-      if (typeof androidBridge.savePdf === 'function') {
-        androidBridge.savePdf(base64Data, filename);
-        showPdfToast(`PDF sent to Android Downloads: ${filename}`);
-        return;
-      }
-      if (typeof androidBridge.downloadFile === 'function') {
-        androidBridge.downloadFile(dataUri, filename);
-        showPdfToast(`PDF sent to Android Downloads: ${filename}`);
-        return;
-      }
-    }
-
-    // 3. Web Share API (native share sheet on Android Chrome / supported WebViews)
-    if (navigator.canShare) {
-      try {
-        const file = new File([pdfBlob], filename, { type: 'application/pdf' });
-        if (navigator.canShare({ files: [file] })) {
-          await navigator.share({
-            files: [file],
-            title: filename,
-            text: `Fundora Receipt: ${filename}`,
-          });
-          showPdfToast(`PDF Receipt shared successfully!`);
-          return;
-        }
       } catch (shareErr: any) {
-        if (shareErr?.name === 'AbortError') {
-          return; // User cancelled share dialog intentionally
+        if (shareErr?.name !== 'AbortError') {
+          console.warn('[PDF Native Engine] Share sheet closed or unsupported:', shareErr);
         }
-        console.warn('[PDF] Web share failed, continuing fallback:', shareErr);
       }
+    } catch (err: any) {
+      console.error('[PDF Native Engine Error] Native Capacitor save failed:', err);
+      showPdfToast(`Failed to save PDF: ${err?.message || err}`, true);
     }
+    return;
+  }
 
-    // 4. Android Print Service Fallback (Opens native "Save as PDF" dialog in Android WebView)
-    if (isAndroid || isWebView) {
-      try {
-        const blobUrl = URL.createObjectURL(pdfBlob);
-        const iframe = document.createElement('iframe');
-        iframe.id = `pdf-print-frame-${Date.now()}`;
-        iframe.style.position = 'fixed';
-        iframe.style.right = '0';
-        iframe.style.bottom = '0';
-        iframe.style.width = '0';
-        iframe.style.height = '0';
-        iframe.style.border = '0';
-        iframe.style.opacity = '0';
-        iframe.src = blobUrl;
-
-        document.body.appendChild(iframe);
-
-        iframe.onload = () => {
-          try {
-            iframe.contentWindow?.focus();
-            iframe.contentWindow?.print();
-            showPdfToast(`Opening PDF viewer / print save for ${filename}`);
-          } catch (pErr) {
-            console.warn('[PDF] iframe print failed:', pErr);
-          }
-          setTimeout(() => {
-            URL.revokeObjectURL(blobUrl);
-            if (document.body.contains(iframe)) iframe.remove();
-          }, 60000);
-        };
-      } catch (iframeErr) {
-        console.warn('[PDF] Failed to trigger iframe print dialog:', iframeErr);
-      }
-    }
-
-    // 5. Standard Web Download (doc.save) & Base64 Anchor Link Trigger
-    try {
-      doc.save(filename);
-    } catch (saveErr) {
-      console.warn('[PDF] doc.save failed:', saveErr);
-    }
-
-    try {
-      const link = document.createElement('a');
-      link.href = dataUri;
-      link.download = filename;
-      link.target = '_blank';
-      link.rel = 'noopener';
-      document.body.appendChild(link);
-      link.click();
-      setTimeout(() => {
-        if (document.body.contains(link)) link.remove();
-      }, 1000);
-    } catch (linkErr) {
-      console.warn('[PDF] Base64 download link click failed:', linkErr);
-    }
-
-    showPdfToast(`Downloading Receipt: ${filename}`);
-  } catch (err) {
-    console.error('[PDF] Error processing PDF output:', err);
-    showPdfToast(`Failed to process PDF receipt. Please retry.`, true);
+  // Web Browser Standard Download
+  try {
+    doc.save(filename);
+    showPdfToast(`PDF downloaded: ${filename}`);
+  } catch (webErr: any) {
+    console.error('[PDF Web Engine Error] doc.save failed:', webErr);
+    showPdfToast(`Failed to download PDF: ${webErr?.message || webErr}`, true);
   }
 }
 
@@ -343,7 +247,7 @@ export function generateReceiptPDF(item: any, type: 'transaction' | 'claim') {
   doc.text('Verify ledger integrity via public index on the platform homepage.', pageWidth - 15, pageHeight - 20, { align: 'right' });
 
   // Save or share the PDF
-  const filename = `${type}_receipt_${item.id}.pdf`;
+  const filename = `Receipt-${item.id}.pdf`;
   saveOrSharePDF(doc, filename);
 }
 
