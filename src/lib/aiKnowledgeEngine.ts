@@ -594,7 +594,7 @@ export function searchStructuredFAQ(
     }
   }
 
-  if (bestMatch && maxScore >= 10) {
+  if (bestMatch && maxScore >= 3) {
     const rawAnswer = bestMatch.answers[detectedLangKey] || bestMatch.answers['en'];
     const retrievedContext = `RETRIEVED DOCUMENTATION FAQ [${bestMatch.id}] (${bestMatch.title}):\n${JSON.stringify(bestMatch.metadata, null, 2)}\nOfficial Fact Answer:\n${bestMatch.answers.en}`;
 
@@ -608,11 +608,18 @@ export function searchStructuredFAQ(
     };
   }
 
+  // If maxScore is lower than 3, still return bestMatch if available for context
+  const retrievedContextFallback = bestMatch
+    ? `RETRIEVED DOCUMENTATION FAQ [${bestMatch.id}] (${bestMatch.title}):\n${JSON.stringify(bestMatch.metadata, null, 2)}\nOfficial Fact Answer:\n${bestMatch.answers.en}`
+    : undefined;
+
   return {
     matched: false,
     score: maxScore,
-    reply: '',
-    escalate: isHumanEscalation
+    faqItem: bestMatch,
+    reply: bestMatch ? (bestMatch.answers[detectedLangKey] || bestMatch.answers['en']) : '',
+    escalate: isHumanEscalation,
+    retrievedContext: retrievedContextFallback
   };
 }
 
@@ -630,7 +637,7 @@ export function generateSmartFundoraAnswer(
   // First, query the Structured FAQ Engine
   const faqResult = searchStructuredFAQ(message, userLanguage);
 
-  if (faqResult.matched && faqResult.reply) {
+  if (faqResult.reply) {
     return {
       reply: faqResult.reply,
       escalate: faqResult.escalate,
@@ -640,13 +647,13 @@ export function generateSmartFundoraAnswer(
   }
 
   // Greetings handling
-  const isUrduScript = /[\u0600-\u06FF]/.test(message) && (message.includes('کیا') || message.includes('سلام') || message.includes('کے'));
+  const isUrduScript = /[\u0600-\u06FF]/.test(message) && (message.includes('کیا') || message.includes('سلام') || message.includes('کے') || message.includes('فنڈورا') || message.includes('منافع'));
   const isArabicScript = /[\u0600-\u06FF]/.test(message) && !isUrduScript;
-  const isRomanUrdu = query.includes('kaise') || query.includes('kya') || query.includes('batao') || query.includes('salam');
+  const isRomanUrdu = query.includes('kaise') || query.includes('kese') || query.includes('kya') || query.includes('batao') || query.includes('salam') || query.includes('paise') || query.includes('paisa') || query.includes('bhai') || query.includes('chahiye');
 
   if (
     query === 'hi' || query === 'hello' || query === 'hey' || query === 'hy' ||
-    query.includes('salam') || query.includes('aoa') || query.includes('how are you')
+    query.includes('salam') || query.includes('aoa') || query.includes('how are you') || query.includes('kya haal')
   ) {
     if (isUrduScript) {
       return {
@@ -672,7 +679,37 @@ export function generateSmartFundoraAnswer(
     };
   }
 
-  // Specific default structured answer when question doesn't hit a specific FAQ key but user asks something
+  // Intent checks if searchStructuredFAQ didn't catch an explicit reply
+  const isDepositIntent = query.includes('deposit') || query.includes('deposite') || query.includes('recharge') || query.includes('dalna') || query.includes('paisa') || query.includes('paise') || query.includes('trc20') || query.includes('bep20') || message.includes('ڈپازٹ') || message.includes('جمع');
+  const isWithdrawIntent = query.includes('withdraw') || query.includes('withdrawal') || query.includes('nikalna') || query.includes('nikalein') || query.includes('payout') || query.includes('cashout') || message.includes('ودڈرال') || message.includes('سحب');
+  const isRoiProfitIntent = query.includes('roi') || query.includes('profit') || query.includes('yield') || query.includes('kamai') || query.includes('munafa') || query.includes('return') || query.includes('earning') || query.includes('daily') || message.includes('منافع') || message.includes('ییلڈ');
+  const isLegalIntent = query.includes('legal') || query.includes('real') || query.includes('fake') || query.includes('scam') || query.includes('legit') || query.includes('company') || query.includes('register') || query.includes('registration') || query.includes('halal') || message.includes('قانونی') || message.includes('حلال');
+  const isReferralIntent = query.includes('referral') || query.includes('refer') || query.includes('code') || query.includes('link') || query.includes('commission') || query.includes('bonus') || query.includes('level') || message.includes('ریفرل');
+  const isAppIntent = query.includes('app') || query.includes('apk') || query.includes('download') || query.includes('android') || query.includes('mobile') || message.includes('ایپ');
+
+  let targetFaqId = 'faq_fractional_coownership_how_it_works';
+  if (isDepositIntent) targetFaqId = 'faq_deposit_procedure';
+  else if (isWithdrawIntent) targetFaqId = 'faq_withdrawal_rules';
+  else if (isRoiProfitIntent) targetFaqId = 'faq_property_roi_yields';
+  else if (isLegalIntent) targetFaqId = 'faq_uk_registration_legal';
+  else if (isReferralIntent) targetFaqId = 'faq_referral_program';
+  else if (isAppIntent) targetFaqId = 'faq_android_mobile_app';
+
+  const matchedFaq = STRUCTURED_FAQ_DATABASE.find(f => f.id === targetFaqId);
+  if (matchedFaq) {
+    let langKey = 'en';
+    if (isUrduScript || userLanguage === 'ur') langKey = 'ur';
+    else if (isArabicScript || userLanguage === 'ar') langKey = 'ar';
+    else if (isRomanUrdu) langKey = 'roman_urdu';
+
+    return {
+      reply: matchedFaq.answers[langKey] || matchedFaq.answers['en'],
+      escalate: faqResult.escalate,
+      faqId: matchedFaq.id
+    };
+  }
+
+  // Final fallback formatted response
   if (isUrduScript) {
     return {
       reply: `🤖 **فنڈورا اے آئی رہنمائی**:
@@ -683,7 +720,7 @@ export function generateSmartFundoraAnswer(
 • **ودڈرال**: کم از کم 10 USDT
 • **رجسٹریشن**: UK Companies House No. 16870956
 
-براہ کرم اپنا مخصوص سوال لکھیں تاکہ آپ کو فوری درست جواب دیا جا سکے۔`,
+آپ کا سوال موصول ہو چکا ہے۔ کیا آپ ڈپازٹ کرنے کا طریقہ، ودڈرال، یا روزانہ کا منافع کلیم کرنے کے بارے میں مزید تفصیل چاہتے ہیں؟`,
       escalate: faqResult.escalate
     };
   }
@@ -698,7 +735,7 @@ export function generateSmartFundoraAnswer(
 • **Withdrawal**: Minimum 10 USDT (1-24 hours)
 • **Legal**: UK Companies House Reg No. 16870956
 
-Aap deposit, property yield, ya withdrawal par direct koi bhi sawal pooch sakte hain.`,
+Aap ka sawal mil gaya hai. Deposit, daily profit claim, ya withdrawal ke bare mein mazeed poochiye!`,
       escalate: faqResult.escalate
     };
   }
@@ -713,7 +750,7 @@ Here are the key verified facts regarding your request:
 • **Minimum Withdrawal**: 10 USDT (Instant queue approval)
 • **UK Legal Registration**: UK Companies House Registration No. 16870956
 
-Please specify your question if you need step-by-step guidance on deposits, yields, or account limits!`,
+Your request is noted! Ask anything about depositing, claiming daily yields, or processing withdrawals!`,
     escalate: faqResult.escalate
   };
 }

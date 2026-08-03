@@ -1,5 +1,75 @@
 import { jsPDF } from 'jspdf';
 
+export async function saveOrSharePDF(doc: jsPDF, filename: string) {
+  const isAndroidOrWebView = 
+    /Android|wv|WebView/i.test(navigator.userAgent) || 
+    Boolean((window as any).Android) || 
+    Boolean((window as any).Capacitor) || 
+    Boolean((window as any).Cordova);
+
+  try {
+    const pdfBlob = doc.output('blob');
+    const file = new File([pdfBlob], filename, { type: 'application/pdf' });
+
+    // 1. Try Web Share API first if supported (Android native share sheet handles saving files to device downloads)
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({
+          files: [file],
+          title: filename,
+          text: `Fundora Receipt: ${filename}`,
+        });
+        return;
+      } catch (shareErr: any) {
+        if (shareErr?.name === 'AbortError') {
+          return;
+        }
+        console.warn('[PDF] Web share failed, proceeding with fallback download methods:', shareErr);
+      }
+    }
+
+    // 2. Try standard doc.save()
+    try {
+      doc.save(filename);
+    } catch (saveErr) {
+      console.warn('[PDF] doc.save failed:', saveErr);
+    }
+
+    // 3. Data URI fallback for Android WebViews where blob: URL downloads are blocked by webview engine
+    const dataUri = doc.output('datauristring');
+    const link = document.createElement('a');
+    link.href = dataUri;
+    link.download = filename;
+    link.target = '_blank';
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+      if (document.body.contains(link)) {
+        document.body.removeChild(link);
+      }
+    }, 1000);
+
+    // 4. If running in Android WebView, also try opening Data URI directly
+    if (isAndroidOrWebView) {
+      try {
+        const win = window.open(dataUri, '_blank');
+        if (!win) {
+          window.location.href = dataUri;
+        }
+      } catch (winErr) {
+        console.warn('[PDF] Failed to open data URI in window:', winErr);
+      }
+    }
+  } catch (err) {
+    console.error('[PDF] Error saving/sharing PDF:', err);
+    try {
+      doc.save(filename);
+    } catch (e) {
+      console.error('[PDF] Final doc.save failed:', e);
+    }
+  }
+}
+
 export function generateReceiptPDF(item: any, type: 'transaction' | 'claim') {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -146,9 +216,9 @@ export function generateReceiptPDF(item: any, type: 'transaction' | 'claim') {
   doc.text('FUNDORA REAL ESTATE TRADING PLATFORM', pageWidth - 15, pageHeight - 25, { align: 'right' });
   doc.text('Verify ledger integrity via public index on the platform homepage.', pageWidth - 15, pageHeight - 20, { align: 'right' });
 
-  // Save the PDF
+  // Save or share the PDF
   const filename = `${type}_receipt_${item.id}.pdf`;
-  doc.save(filename);
+  saveOrSharePDF(doc, filename);
 }
 
 export function generateDocumentPDF(docName: string, project: any) {
@@ -331,5 +401,6 @@ The sovereign land registry and local municipal boards have reviewed the digital
   doc.text('FUNDORA GLOBAL ASSETS SECURITIZATION REGISTER', pageWidth - 15, pageHeight - 25, { align: 'right' });
   doc.text('Verify registry signatures online using the secured portal.', pageWidth - 15, pageHeight - 20, { align: 'right' });
 
-  doc.save(docName);
+  const finalFilename = docName.toLowerCase().endsWith('.pdf') ? docName : `${docName}.pdf`;
+  saveOrSharePDF(doc, finalFilename);
 }
