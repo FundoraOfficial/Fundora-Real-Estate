@@ -1,72 +1,198 @@
 import { jsPDF } from 'jspdf';
 
+export function showPdfToast(message: string, isError = false) {
+  try {
+    const existing = document.getElementById('pdf-download-toast');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.id = 'pdf-download-toast';
+    toast.style.position = 'fixed';
+    toast.style.bottom = '24px';
+    toast.style.left = '50%';
+    toast.style.transform = 'translateX(-50%)';
+    toast.style.zIndex = '999999';
+    toast.style.maxWidth = '360px';
+    toast.style.width = '90%';
+    toast.style.padding = '12px 16px';
+    toast.style.borderRadius = '12px';
+    toast.style.boxShadow = '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)';
+    toast.style.background = isError ? '#881337' : '#0f172a';
+    toast.style.color = isError ? '#ffe4e6' : '#6ee7b7';
+    toast.style.border = isError ? '1px solid #f43f5e' : '1px solid #10b981';
+    toast.style.fontSize = '12px';
+    toast.style.fontFamily = 'sans-serif';
+    toast.style.fontWeight = 'bold';
+    toast.style.display = 'flex';
+    toast.style.alignItems = 'center';
+    toast.style.justifyContent = 'space-between';
+    toast.style.gap = '12px';
+
+    toast.innerHTML = `
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 16px;">${isError ? '⚠️' : '📄'}</span>
+        <span>${message}</span>
+      </div>
+      <button onclick="this.parentElement.remove()" style="background: none; border: none; color: #94a3b8; font-size: 18px; cursor: pointer; padding: 0 4px;">&times;</button>
+    `;
+
+    document.body.appendChild(toast);
+    setTimeout(() => {
+      if (document.body.contains(toast)) {
+        toast.remove();
+      }
+    }, 5000);
+  } catch (e) {
+    console.error('[PDF Toast] Error showing toast:', e);
+  }
+}
+
 export async function saveOrSharePDF(doc: jsPDF, filename: string) {
-  const isAndroidOrWebView = 
-    /Android|wv|WebView/i.test(navigator.userAgent) || 
+  const ua = navigator.userAgent || '';
+  const isAndroid = /Android/i.test(ua);
+  const isWebView = /wv|WebView|Version\/[0-9.]+/i.test(ua) || 
     Boolean((window as any).Android) || 
     Boolean((window as any).Capacitor) || 
     Boolean((window as any).Cordova);
 
+  console.log(`[PDF Engine] Initiating download for ${filename} (Android: ${isAndroid}, WebView: ${isWebView})`);
+
   try {
     const pdfBlob = doc.output('blob');
-    const file = new File([pdfBlob], filename, { type: 'application/pdf' });
+    const dataUri = doc.output('datauristring');
+    const base64Data = dataUri.split(',')[1];
 
-    // 1. Try Web Share API first if supported (Android native share sheet handles saving files to device downloads)
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    // 1. Check for Capacitor Native Plugins (Filesystem & Share)
+    const capacitor = (window as any).Capacitor;
+    if (capacitor?.Plugins?.Filesystem) {
       try {
-        await navigator.share({
-          files: [file],
-          title: filename,
-          text: `Fundora Receipt: ${filename}`,
+        const { Filesystem, Share, Directory } = capacitor.Plugins;
+        const targetDir = Directory?.Documents || Directory?.ExternalStorage || Directory?.Cache || 'DOCUMENTS';
+        
+        const writeResult = await Filesystem.writeFile({
+          path: filename,
+          data: base64Data,
+          directory: targetDir,
+          recursive: true,
         });
-        return;
-      } catch (shareErr: any) {
-        if (shareErr?.name === 'AbortError') {
-          return;
+
+        showPdfToast(`PDF Receipt saved: ${filename}`);
+
+        if (Share) {
+          try {
+            await Share.share({
+              title: filename,
+              text: `Fundora Receipt: ${filename}`,
+              url: writeResult.uri || writeResult.filepath,
+              dialogTitle: 'Save or Share PDF Receipt',
+            });
+          } catch (shareErr) {
+            console.warn('[PDF] Capacitor Share dismissed or failed:', shareErr);
+          }
         }
-        console.warn('[PDF] Web share failed, proceeding with fallback download methods:', shareErr);
+        return;
+      } catch (capErr) {
+        console.warn('[PDF] Capacitor Filesystem failed:', capErr);
       }
     }
 
-    // 2. Try standard doc.save()
+    // 2. Check for Native Android JS Bridge (`window.Android`)
+    const androidBridge = (window as any).Android;
+    if (androidBridge) {
+      if (typeof androidBridge.savePdf === 'function') {
+        androidBridge.savePdf(base64Data, filename);
+        showPdfToast(`PDF sent to Android Downloads: ${filename}`);
+        return;
+      }
+      if (typeof androidBridge.downloadFile === 'function') {
+        androidBridge.downloadFile(dataUri, filename);
+        showPdfToast(`PDF sent to Android Downloads: ${filename}`);
+        return;
+      }
+    }
+
+    // 3. Web Share API (native share sheet on Android Chrome / supported WebViews)
+    if (navigator.canShare) {
+      try {
+        const file = new File([pdfBlob], filename, { type: 'application/pdf' });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            title: filename,
+            text: `Fundora Receipt: ${filename}`,
+          });
+          showPdfToast(`PDF Receipt shared successfully!`);
+          return;
+        }
+      } catch (shareErr: any) {
+        if (shareErr?.name === 'AbortError') {
+          return; // User cancelled share dialog intentionally
+        }
+        console.warn('[PDF] Web share failed, continuing fallback:', shareErr);
+      }
+    }
+
+    // 4. Android Print Service Fallback (Opens native "Save as PDF" dialog in Android WebView)
+    if (isAndroid || isWebView) {
+      try {
+        const blobUrl = URL.createObjectURL(pdfBlob);
+        const iframe = document.createElement('iframe');
+        iframe.id = `pdf-print-frame-${Date.now()}`;
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = '0';
+        iframe.style.opacity = '0';
+        iframe.src = blobUrl;
+
+        document.body.appendChild(iframe);
+
+        iframe.onload = () => {
+          try {
+            iframe.contentWindow?.focus();
+            iframe.contentWindow?.print();
+            showPdfToast(`Opening PDF viewer / print save for ${filename}`);
+          } catch (pErr) {
+            console.warn('[PDF] iframe print failed:', pErr);
+          }
+          setTimeout(() => {
+            URL.revokeObjectURL(blobUrl);
+            if (document.body.contains(iframe)) iframe.remove();
+          }, 60000);
+        };
+      } catch (iframeErr) {
+        console.warn('[PDF] Failed to trigger iframe print dialog:', iframeErr);
+      }
+    }
+
+    // 5. Standard Web Download (doc.save) & Base64 Anchor Link Trigger
     try {
       doc.save(filename);
     } catch (saveErr) {
       console.warn('[PDF] doc.save failed:', saveErr);
     }
 
-    // 3. Data URI fallback for Android WebViews where blob: URL downloads are blocked by webview engine
-    const dataUri = doc.output('datauristring');
-    const link = document.createElement('a');
-    link.href = dataUri;
-    link.download = filename;
-    link.target = '_blank';
-    document.body.appendChild(link);
-    link.click();
-    setTimeout(() => {
-      if (document.body.contains(link)) {
-        document.body.removeChild(link);
-      }
-    }, 1000);
-
-    // 4. If running in Android WebView, also try opening Data URI directly
-    if (isAndroidOrWebView) {
-      try {
-        const win = window.open(dataUri, '_blank');
-        if (!win) {
-          window.location.href = dataUri;
-        }
-      } catch (winErr) {
-        console.warn('[PDF] Failed to open data URI in window:', winErr);
-      }
-    }
-  } catch (err) {
-    console.error('[PDF] Error saving/sharing PDF:', err);
     try {
-      doc.save(filename);
-    } catch (e) {
-      console.error('[PDF] Final doc.save failed:', e);
+      const link = document.createElement('a');
+      link.href = dataUri;
+      link.download = filename;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        if (document.body.contains(link)) link.remove();
+      }, 1000);
+    } catch (linkErr) {
+      console.warn('[PDF] Base64 download link click failed:', linkErr);
     }
+
+    showPdfToast(`Downloading Receipt: ${filename}`);
+  } catch (err) {
+    console.error('[PDF] Error processing PDF output:', err);
+    showPdfToast(`Failed to process PDF receipt. Please retry.`, true);
   }
 }
 

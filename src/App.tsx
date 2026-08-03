@@ -1756,9 +1756,13 @@ export default function App() {
     };
 
     setActiveUser(updatedUser);
-    setUsersListState(prev => prev.map(u => u.email === updatedUser.email ? updatedUser : u));
+    saveAndSyncUser(updatedUser);
+
     setTransactionsList(prev => [claimTx, ...prev]);
+    saveTransactionToFirebase(claimTx);
+
     setClaimsHistory(prev => [newClaimRecord, ...prev]);
+    saveClaimToFirebase(newClaimRecord);
 
     addSystemLog('Large_Withdrawal', `Daily profit payout of $${dailyProfitSum} claims validated successfully at ${currentHour}:${currentMinute} in ${currentSlot === 16 ? '04:00 PM' : '09:00 PM'} slot.`, 'Secure');
     return { success: true, type: 'success' as const, amount: dailyProfitSum };
@@ -1817,10 +1821,18 @@ export default function App() {
     };
 
     setActiveUser(updatedUser);
-    setUsersListState(prev => prev.map(u => u.email === updatedUser.email ? updatedUser : u));
+    saveAndSyncUser(updatedUser);
+
     setInvestmentsList(updatedInvestments);
+    const targetInv = updatedInvestments.find(i => i.id === investmentId);
+    if (targetInv) saveInvestmentToFirebase(targetInv);
+
     setProjectsList(updatedProjects);
+    const targetProj = updatedProjects.find(p => p.id === inv.projectId);
+    if (targetProj) saveProjectToFirebase(targetProj);
+
     setTransactionsList(prev => [liquidationTx, ...prev]);
+    saveTransactionToFirebase(liquidationTx);
 
     addSystemLog('Admin_Action', `User ${activeUser.email} early liquidated investment ${inv.id}. 20% loss deduction applied ($${deduction.toFixed(2)}), $${payout.toFixed(2)} refunded to main balance.`, 'Secure');
 
@@ -1864,6 +1876,7 @@ export default function App() {
 
     if (newMissedRecords.length > 0) {
       setClaimsHistory(prev => [...newMissedRecords, ...prev]);
+      newMissedRecords.forEach(claim => saveClaimToFirebase(claim));
     }
 
     // 3. Decrement plan durations (remainingMonths) for active investments, handling maturities
@@ -1909,6 +1922,7 @@ export default function App() {
     });
 
     setInvestmentsList(updatedInvestments);
+    updatedInvestments.forEach(inv => saveInvestmentToFirebase(inv));
 
     // 4. Return matured principal to the respective users' balances
     if (maturedRefundTransactions.length > 0) {
@@ -1917,11 +1931,13 @@ export default function App() {
         if (refundAmount) {
           const updatedBal = Math.round((u.balance + refundAmount) * 100) / 100;
           const updatedTotalInv = Math.max(0, Math.round((u.totalInvestment - refundAmount) * 100) / 100);
-          return {
+          const updatedUser = {
             ...u,
             balance: updatedBal,
             totalInvestment: updatedTotalInv
           };
+          saveAndSyncUser(updatedUser);
+          return updatedUser;
         }
         return u;
       }));
@@ -1936,10 +1952,12 @@ export default function App() {
             totalInvestment: Math.max(0, Math.round((activeUser.totalInvestment - refundAmount) * 100) / 100)
           };
           setActiveUser(updatedActiveUser);
+          saveAndSyncUser(updatedActiveUser);
         }
       }
 
       setTransactionsList(prev => [...maturedRefundTransactions, ...prev]);
+      maturedRefundTransactions.forEach(tx => saveTransactionToFirebase(tx));
 
       maturedRefundTransactions.forEach(tx => {
         addSystemLog('Admin_Action', `Automatic principal maturity payout completed: $${tx.amount.toFixed(2)} credited to ${tx.userEmail} balance.`, 'Secure');
