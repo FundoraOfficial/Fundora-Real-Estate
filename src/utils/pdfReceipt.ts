@@ -55,36 +55,79 @@ export async function saveOrSharePDF(doc: jsPDF, filename: string) {
 
   if (isNative) {
     try {
-      console.log(`[PDF Native Engine] Processing native PDF download for Android: ${filename}`);
+      console.log(`[PDF Native Engine] Processing native PDF generation for Android: ${filename}`);
+      
+      const arrayBuffer = doc.output('arraybuffer');
+      const fileSizeInBytes = arrayBuffer.byteLength;
+      const fileSizeInKB = (fileSizeInBytes / 1024).toFixed(2);
+      
       const dataUri = doc.output('datauristring');
       const base64Data = dataUri.split(',')[1];
 
-      // 1. Write file natively to Android Documents directory
-      const saveResult = await Filesystem.writeFile({
-        path: filename,
-        data: base64Data,
-        directory: Directory.Documents,
-        recursive: true
-      });
+      let saveResult: { uri: string } | null = null;
+      let usedDirectoryName = '';
 
-      console.log('[PDF Native Engine] Native file save successful:', saveResult.uri);
-      showPdfToast(`PDF saved: ${filename}`);
+      // Try writing to app-specific scoped directories sequentially without requiring legacy external permissions
+      const targetDirectories = [
+        { name: 'Documents', dir: Directory.Documents },
+        { name: 'Data', dir: Directory.Data },
+        { name: 'Cache', dir: Directory.Cache },
+      ];
 
-      // 2. Open Android native Share Sheet for instant opening/sharing/saving
+      for (const target of targetDirectories) {
+        try {
+          console.log(`[PDF Native Engine] Attempting save to Directory.${target.name}...`);
+          saveResult = await Filesystem.writeFile({
+            path: filename,
+            data: base64Data,
+            directory: target.dir,
+            recursive: true
+          });
+          usedDirectoryName = target.name;
+          console.log(`[PDF Native Engine] Successfully wrote file to Directory.${target.name}`);
+          break;
+        } catch (dirErr: any) {
+          console.warn(`[PDF Native Engine] Directory.${target.name} write attempt failed:`, dirErr?.message || dirErr);
+        }
+      }
+
+      if (!saveResult || !saveResult.uri) {
+        throw new Error('Unable to write PDF file to any available storage directory.');
+      }
+
+      console.log(`[PDF Native Engine Metrics]`);
+      console.log(` - Selected Directory: Directory.${usedDirectoryName}`);
+      console.log(` - Saved File URI: ${saveResult.uri}`);
+      console.log(` - File Size: ${fileSizeInBytes} bytes (~${fileSizeInKB} KB)`);
+
+      showPdfToast(`PDF saved (${fileSizeInKB} KB): ${filename}`);
+
+      // Open Android native Share Sheet using the saved file URI
+      let shareStatus = 'Pending';
       try {
+        console.log(`[PDF Native Engine] Launching Android Share Sheet for URI: ${saveResult.uri}`);
         await Share.share({
           title: filename,
           text: `Fundora PDF Receipt: ${filename}`,
           url: saveResult.uri,
           dialogTitle: 'Save or Share PDF Receipt'
         });
+        shareStatus = 'Opened / Shared successfully';
       } catch (shareErr: any) {
-        if (shareErr?.name !== 'AbortError') {
-          console.warn('[PDF Native Engine] Share sheet closed or unsupported:', shareErr);
+        if (shareErr?.name === 'AbortError' || shareErr?.message?.includes('canceled') || shareErr?.message?.includes('dismissed')) {
+          shareStatus = 'User dismissed Share Sheet';
+          console.log('[PDF Native Engine] User closed share dialog');
+        } else {
+          shareStatus = `Share Sheet Error: ${shareErr?.message || shareErr}`;
+          console.warn('[PDF Native Engine] Android Share Sheet error:', shareErr);
+          showPdfToast(`PDF saved at ${usedDirectoryName}. Share sheet issue: ${shareErr?.message || 'Unsupported'}`, true);
         }
       }
+
+      console.log(` - Share Status: ${shareStatus}`);
+
     } catch (err: any) {
-      console.error('[PDF Native Engine Error] Native Capacitor save failed:', err);
+      console.error('[PDF Native Engine Error] Native Capacitor PDF generation/save failed:', err);
       showPdfToast(`Failed to save PDF: ${err?.message || err}`, true);
     }
     return;
