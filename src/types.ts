@@ -85,6 +85,8 @@ export interface UserAccount {
   kycDocumentUrlBack?: string;
   kycDocumentFileNameBack?: string;
   password?: string;
+  fcmToken?: string;
+  fcmTokens?: string[];
   webAuthnEnabled?: boolean;
   webAuthnCredentialId?: string;
   webAuthnPublicKey?: string;

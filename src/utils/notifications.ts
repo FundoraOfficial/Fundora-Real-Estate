@@ -5,6 +5,21 @@
  */
 
 import { isNativeAppContainer } from './nativeApp';
+import { Capacitor } from '@capacitor/core';
+import {
+  initFcmPushNotifications,
+  sendFcmEventNotification,
+  triggerFcmDepositSubmitted,
+  triggerFcmDepositApproved,
+  triggerFcmDepositRejected,
+  triggerFcmWithdrawalSubmitted,
+  triggerFcmWithdrawalApproved,
+  triggerFcmWithdrawalRejected,
+  triggerFcmKycSubmitted,
+  triggerFcmKycApproved,
+  triggerFcmKycRejected,
+  triggerFcmProfitClaimed
+} from './fcmNotifications';
 
 export type SystemNotificationPermission = 'granted' | 'denied' | 'default';
 
@@ -74,12 +89,13 @@ export async function requestNotificationPermission(): Promise<boolean> {
     // 1. Pre-warm Service Worker for Android status bar notifications
     await initServiceWorker().catch(() => {});
 
-    // 2. Register Device Push Token for FCM / Native Push
+    // 2. Initialize Native FCM Push Notification Service
+    await initFcmPushNotifications().catch(() => {});
     registerDevicePushToken();
 
-    // 3. Check if Capacitor / Native APK plugin is available
+    // 3. Check if Capacitor / Native APK plugin is available on Native Platform
     const win = window as any;
-    if (win.Capacitor?.Plugins?.PushNotifications) {
+    if (Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('PushNotifications') && win.Capacitor?.Plugins?.PushNotifications) {
       try {
         const req = await win.Capacitor.Plugins.PushNotifications.requestPermissions();
         if (req?.receive === 'granted') {
@@ -91,7 +107,7 @@ export async function requestNotificationPermission(): Promise<boolean> {
       }
     }
 
-    if (win.Capacitor?.Plugins?.LocalNotifications) {
+    if (Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('LocalNotifications') && win.Capacitor?.Plugins?.LocalNotifications) {
       try {
         const res = await win.Capacitor.Plugins.LocalNotifications.requestPermissions();
         if (res?.display === 'granted') {
@@ -138,7 +154,7 @@ export function registerDevicePushToken(): string {
 
     // Attempt Capacitor PushNotifications token fetch if running inside native shell
     const win = window as any;
-    if (win.Capacitor?.Plugins?.PushNotifications) {
+    if (Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('PushNotifications') && win.Capacitor?.Plugins?.PushNotifications) {
       win.Capacitor.Plugins.PushNotifications.addListener('registration', (tok: { value: string }) => {
         if (tok?.value) {
           localStorage.setItem('fundora_device_push_token', tok.value);
@@ -401,7 +417,7 @@ export async function sendSystemNotification(
 /**
  * Notification helper for DEPOSIT updates
  */
-export function notifyDepositUpdate(amount: number | string, status: 'approved' | 'rejected' | 'pending', txId?: string) {
+export function notifyDepositUpdate(amount: number | string, status: 'approved' | 'rejected' | 'pending', txId?: string, userEmail?: string) {
   const prefs = getNotificationPreferences();
   if (!prefs.masterEnabled || !prefs.depositAlerts) return;
 
@@ -412,12 +428,15 @@ export function notifyDepositUpdate(amount: number | string, status: 'approved' 
   if (status === 'approved') {
     title = `✅ Deposit Approved! ($${amount} USDT)`;
     body = `Great news! Your deposit of $${amount} USDT was confirmed and added to your wallet balance.`;
+    if (userEmail) triggerFcmDepositApproved(userEmail, amount);
   } else if (status === 'pending') {
     title = `⏳ Deposit Submitted ($${amount} USDT)`;
     body = `Your deposit request of $${amount} USDT has been received and is currently under verification.`;
+    if (userEmail) triggerFcmDepositSubmitted(userEmail, amount, 'TRC20/BEP20');
   } else if (status === 'rejected') {
     title = `❌ Deposit Update ($${amount} USDT)`;
     body = `Your deposit of $${amount} USDT was declined. Please check transaction notes or support.`;
+    if (userEmail) triggerFcmDepositRejected(userEmail, amount);
   }
 
   sendSystemNotification(title, {
@@ -430,7 +449,7 @@ export function notifyDepositUpdate(amount: number | string, status: 'approved' 
 /**
  * Notification helper for WITHDRAWAL updates
  */
-export function notifyWithdrawalUpdate(amount: number | string, status: 'approved' | 'rejected' | 'pending' | 'processing', txId?: string) {
+export function notifyWithdrawalUpdate(amount: number | string, status: 'approved' | 'rejected' | 'pending' | 'processing', txId?: string, userEmail?: string) {
   const prefs = getNotificationPreferences();
   if (!prefs.masterEnabled || !prefs.withdrawalAlerts) return;
 
@@ -440,12 +459,15 @@ export function notifyWithdrawalUpdate(amount: number | string, status: 'approve
   if (status === 'approved') {
     title = `🎉 Withdrawal Approved! ($${amount} USDT)`;
     body = `Your payout of $${amount} USDT has been processed to your destination wallet address.`;
+    if (userEmail) triggerFcmWithdrawalApproved(userEmail, amount);
   } else if (status === 'pending' || status === 'processing') {
     title = `⏳ Withdrawal Request Received ($${amount} USDT)`;
     body = `Your withdrawal request of $${amount} USDT is being processed by automated compliance.`;
+    if (userEmail) triggerFcmWithdrawalSubmitted(userEmail, amount);
   } else if (status === 'rejected') {
     title = `⚠️ Withdrawal Rejected ($${amount} USDT)`;
     body = `Your withdrawal request of $${amount} USDT was rejected. Funds remain in your balance.`;
+    if (userEmail) triggerFcmWithdrawalRejected(userEmail, amount);
   }
 
   sendSystemNotification(title, {
@@ -458,7 +480,7 @@ export function notifyWithdrawalUpdate(amount: number | string, status: 'approve
 /**
  * Notification helper for KYC status changes
  */
-export function notifyKycUpdate(status: 'verified' | 'rejected' | 'pending' | 'unverified') {
+export function notifyKycUpdate(status: 'verified' | 'rejected' | 'pending' | 'unverified', userEmail?: string) {
   const prefs = getNotificationPreferences();
   if (!prefs.masterEnabled || !prefs.kycAlerts) return;
 
@@ -468,12 +490,15 @@ export function notifyKycUpdate(status: 'verified' | 'rejected' | 'pending' | 'u
   if (status === 'verified') {
     title = `✅ Identity Verified (KYC Complete)`;
     body = `Congratulations! Your identity has been verified. You now have full access to higher limits & rental yields!`;
+    if (userEmail) triggerFcmKycApproved(userEmail);
   } else if (status === 'rejected') {
     title = `❌ KYC Verification Declined`;
     body = `Your submitted identification document was declined. Please resubmit a clear photo ID in profile settings.`;
+    if (userEmail) triggerFcmKycRejected(userEmail);
   } else if (status === 'pending') {
     title = `📋 KYC Verification Pending`;
     body = `Your KYC documents are under official review by Fundora compliance officers.`;
+    if (userEmail) triggerFcmKycSubmitted(userEmail);
   }
 
   sendSystemNotification(title, {
@@ -486,9 +511,13 @@ export function notifyKycUpdate(status: 'verified' | 'rejected' | 'pending' | 'u
 /**
  * Notification helper for Rental Yield / Daily Profit claims
  */
-export function notifyYieldClaim(amount: number | string, projectName: string) {
+export function notifyYieldClaim(amount: number | string, projectName: string, userEmail?: string) {
   const prefs = getNotificationPreferences();
   if (!prefs.masterEnabled || !prefs.yieldAlerts) return;
+
+  if (userEmail) {
+    triggerFcmProfitClaimed(userEmail, amount);
+  }
 
   sendSystemNotification(`📈 Daily Rental Yield Claimed!`, {
     body: `You successfully claimed $${amount} USDT rental income from ${projectName}.`,

@@ -62,6 +62,7 @@ import {
   notifyKycUpdate,
   initServiceWorker
 } from './utils/notifications';
+import { initFcmPushNotifications } from './utils/fcmNotifications';
 import InAppNotificationBanner from './components/InAppNotificationBanner';
 import NotificationPermissionModal from './components/NotificationPermissionModal';
 
@@ -843,10 +844,13 @@ export default function App() {
     return () => clearInterval(interval);
   }, [isFirebaseSynced, investmentsList, usersListState, claimsHistory, activeUser]);
 
-  // Prompt for native mobile notification permissions on load or when user logs in
+  // Prompt for native mobile notification permissions & FCM token registration on load or when user logs in
   useEffect(() => {
     requestNotificationPermission();
-  }, [activeUser?.id]);
+    if (activeUser) {
+      initFcmPushNotifications(activeUser).catch(() => {});
+    }
+  }, [activeUser?.id, activeUser?.email]);
 
   // Real-time Push Notification alerts for Deposit, Withdrawal & KYC updates in Mobile Notification Bar
   const prevTxStatusMapRef = useRef<Record<string, string>>({});
@@ -858,9 +862,9 @@ export default function App() {
     // 1. Monitor KYC Verification Status changes
     if (prevKycStatusRef.current !== undefined && prevKycStatusRef.current !== activeUser.isKycVerified) {
       if (activeUser.isKycVerified) {
-        notifyKycUpdate('verified');
+        notifyKycUpdate('verified', activeUser.email);
       } else if (activeUser.kycSubmitted === false) {
-        notifyKycUpdate('rejected');
+        notifyKycUpdate('rejected', activeUser.email);
       }
     }
     prevKycStatusRef.current = activeUser.isKycVerified;
@@ -887,22 +891,22 @@ export default function App() {
 
         if (isDeposit) {
           if (isApproved) {
-            notifyDepositUpdate(tx.amount, 'approved', tx.id);
+            notifyDepositUpdate(tx.amount, 'approved', tx.id, activeUser.email);
           } else if (isRejected) {
-            notifyDepositUpdate(tx.amount, 'rejected', tx.id);
+            notifyDepositUpdate(tx.amount, 'rejected', tx.id, activeUser.email);
           }
         } else if (isWithdrawal) {
           if (isApproved) {
-            notifyWithdrawalUpdate(tx.amount, 'approved', tx.id);
+            notifyWithdrawalUpdate(tx.amount, 'approved', tx.id, activeUser.email);
           } else if (isRejected) {
-            notifyWithdrawalUpdate(tx.amount, 'rejected', tx.id);
+            notifyWithdrawalUpdate(tx.amount, 'rejected', tx.id, activeUser.email);
           }
         }
       }
     });
 
     prevTxStatusMapRef.current = currentMap;
-  }, [transactionsList, activeUser?.isKycVerified, activeUser?.kycSubmitted, activeUser?.id]);
+  }, [transactionsList, activeUser?.isKycVerified, activeUser?.kycSubmitted, activeUser?.id, activeUser?.email]);
 
   // Clean up and migrate old Pakistani/South Asian cached values to UAE and UK defaults on startup
   useEffect(() => {
