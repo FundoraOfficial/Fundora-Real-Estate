@@ -66,12 +66,13 @@ export async function saveOrSharePDF(doc: jsPDF, filename: string) {
 
       let saveResult: { uri: string } | null = null;
       let usedDirectoryName = '';
+      let targetDirectoryEnum = Directory.Cache;
 
       // Try writing to app-specific scoped directories sequentially without requiring legacy external permissions
       const targetDirectories = [
-        { name: 'Documents', dir: Directory.Documents },
-        { name: 'Data', dir: Directory.Data },
         { name: 'Cache', dir: Directory.Cache },
+        { name: 'Data', dir: Directory.Data },
+        { name: 'Documents', dir: Directory.Documents },
       ];
 
       for (const target of targetDirectories) {
@@ -84,6 +85,7 @@ export async function saveOrSharePDF(doc: jsPDF, filename: string) {
             recursive: true
           });
           usedDirectoryName = target.name;
+          targetDirectoryEnum = target.dir;
           console.log(`[PDF Native Engine] Successfully wrote file to Directory.${target.name}`);
           break;
         } catch (dirErr: any) {
@@ -95,9 +97,22 @@ export async function saveOrSharePDF(doc: jsPDF, filename: string) {
         throw new Error('Unable to write PDF file to any available storage directory.');
       }
 
+      let canonicalUri = saveResult.uri;
+      try {
+        const uriResult = await Filesystem.getUri({
+          path: filename,
+          directory: targetDirectoryEnum
+        });
+        if (uriResult?.uri) {
+          canonicalUri = uriResult.uri;
+        }
+      } catch (uErr) {
+        console.warn('[PDF Native Engine] Filesystem.getUri call skipped:', uErr);
+      }
+
       console.log(`[PDF Native Engine Metrics]`);
       console.log(` - Selected Directory: Directory.${usedDirectoryName}`);
-      console.log(` - Saved File URI: ${saveResult.uri}`);
+      console.log(` - Saved File URI: ${canonicalUri}`);
       console.log(` - File Size: ${fileSizeInBytes} bytes (~${fileSizeInKB} KB)`);
 
       showPdfToast(`PDF saved (${fileSizeInKB} KB): ${filename}`);
@@ -105,11 +120,11 @@ export async function saveOrSharePDF(doc: jsPDF, filename: string) {
       // Open Android native Share Sheet using the saved file URI
       let shareStatus = 'Pending';
       try {
-        console.log(`[PDF Native Engine] Launching Android Share Sheet for URI: ${saveResult.uri}`);
+        console.log(`[PDF Native Engine] Launching Android Share Sheet for URI: ${canonicalUri}`);
         await Share.share({
           title: filename,
           text: `Fundora PDF Receipt: ${filename}`,
-          url: saveResult.uri,
+          url: canonicalUri,
           dialogTitle: 'Save or Share PDF Receipt'
         });
         shareStatus = 'Opened / Shared successfully';
