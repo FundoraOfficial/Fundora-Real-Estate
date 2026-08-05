@@ -62,7 +62,16 @@ import {
   notifyKycUpdate,
   initServiceWorker
 } from './utils/notifications';
-import { initFcmPushNotifications } from './utils/fcmNotifications';
+import { 
+  initFcmPushNotifications,
+  triggerFcmDepositApproved,
+  triggerFcmDepositRejected,
+  triggerFcmWithdrawalApproved,
+  triggerFcmWithdrawalRejected,
+  triggerFcmKycApproved,
+  triggerFcmKycRejected,
+  triggerFcmReferralBonus
+} from './utils/fcmNotifications';
 import InAppNotificationBanner from './components/InAppNotificationBanner';
 import NotificationPermissionModal from './components/NotificationPermissionModal';
 
@@ -852,61 +861,7 @@ export default function App() {
     }
   }, [activeUser?.id, activeUser?.email]);
 
-  // Real-time Push Notification alerts for Deposit, Withdrawal & KYC updates in Mobile Notification Bar
-  const prevTxStatusMapRef = useRef<Record<string, string>>({});
-  const prevKycStatusRef = useRef<boolean | undefined>(undefined);
 
-  useEffect(() => {
-    if (!activeUser) return;
-
-    // 1. Monitor KYC Verification Status changes
-    if (prevKycStatusRef.current !== undefined && prevKycStatusRef.current !== activeUser.isKycVerified) {
-      if (activeUser.isKycVerified) {
-        notifyKycUpdate('verified', activeUser.email);
-      } else if (activeUser.kycSubmitted === false) {
-        notifyKycUpdate('rejected', activeUser.email);
-      }
-    }
-    prevKycStatusRef.current = activeUser.isKycVerified;
-
-    // 2. Monitor Deposit and Withdrawal status changes
-    const userTxs = transactionsList.filter(
-      t => t.userId === activeUser.id || (t.userEmail && t.userEmail.toLowerCase() === activeUser.email.toLowerCase())
-    );
-
-    const currentMap: Record<string, string> = {};
-    userTxs.forEach(tx => {
-      currentMap[tx.id] = tx.status;
-      const prevStatus = prevTxStatusMapRef.current[tx.id];
-
-      // If transaction status changed!
-      if (prevStatus && prevStatus !== tx.status) {
-        const typeLower = (tx.type || '').toLowerCase();
-        const statusLower = (tx.status || '').toLowerCase();
-
-        const isDeposit = typeLower.includes('deposit');
-        const isWithdrawal = typeLower.includes('withdraw');
-        const isApproved = statusLower === 'completed' || statusLower === 'approved';
-        const isRejected = statusLower === 'rejected';
-
-        if (isDeposit) {
-          if (isApproved) {
-            notifyDepositUpdate(tx.amount, 'approved', tx.id, activeUser.email);
-          } else if (isRejected) {
-            notifyDepositUpdate(tx.amount, 'rejected', tx.id, activeUser.email);
-          }
-        } else if (isWithdrawal) {
-          if (isApproved) {
-            notifyWithdrawalUpdate(tx.amount, 'approved', tx.id, activeUser.email);
-          } else if (isRejected) {
-            notifyWithdrawalUpdate(tx.amount, 'rejected', tx.id, activeUser.email);
-          }
-        }
-      }
-    });
-
-    prevTxStatusMapRef.current = currentMap;
-  }, [transactionsList, activeUser?.isKycVerified, activeUser?.kycSubmitted, activeUser?.id, activeUser?.email]);
 
   // Clean up and migrate old Pakistani/South Asian cached values to UAE and UK defaults on startup
   useEffect(() => {
@@ -1050,10 +1005,26 @@ export default function App() {
 
   const handleUpdateAnyUser = (userId: string, updatedFields: Partial<UserAccount>) => {
     const targetUser = usersListState.find(u => u.id === userId);
-    if (targetUser && updatedFields.kycStatus && updatedFields.kycStatus !== targetUser.kycStatus) {
-      try {
-        sendKycEmail(targetUser.email, targetUser.name, updatedFields.kycStatus as any).catch(e => console.warn('KYC status email error:', e));
-      } catch (_) {}
+    if (targetUser) {
+      const isKycStatusChange = updatedFields.kycStatus && updatedFields.kycStatus !== targetUser.kycStatus;
+      const isKycVerifiedChange = updatedFields.isKycVerified !== undefined && updatedFields.isKycVerified !== targetUser.isKycVerified;
+
+      if (isKycStatusChange || isKycVerifiedChange) {
+        try {
+          const statusVal = updatedFields.kycStatus || (updatedFields.isKycVerified ? 'Verified' : 'Rejected');
+          sendKycEmail(targetUser.email, targetUser.name, statusVal as any).catch(e => console.warn('KYC status email error:', e));
+        } catch (_) {}
+
+        try {
+          if (updatedFields.kycStatus === 'Verified' || updatedFields.isKycVerified === true) {
+            triggerFcmKycApproved(targetUser.email);
+          } else if (updatedFields.kycStatus === 'Rejected' || (updatedFields.isKycVerified === false && updatedFields.kycSubmitted === false)) {
+            triggerFcmKycRejected(targetUser.email);
+          }
+        } catch (e) {
+          console.warn('FCM Push Notification KYC error:', e);
+        }
+      }
     }
 
     setUsersListState(prev => prev.map(u => {
@@ -1437,14 +1408,27 @@ export default function App() {
       addSystemLog('Register_Referral', `Dual 10% First Deposit Referral Bonus activated for ${matchedTx.userEmail} & sponsor!`, 'Secure');
     }
 
-    // Dispatch approval email to investor
+    // Dispatch approval email & instant FCM Push Notification to investor
     try {
       if (matchedTx.type === 'Deposit') {
         sendDepositEmail(userObj.email, userObj.name, matchedTx.amount, matchedTx.network || 'TRC20', matchedTx.txHash || '', 'Approved').catch(e => console.warn('Deposit approve email error:', e));
+        triggerFcmDepositApproved(userObj.email, matchedTx.amount);
       } else if (matchedTx.type === 'Withdrawal') {
         sendWithdrawalEmail(userObj.email, userObj.name, matchedTx.amount, matchedTx.network || 'TRC20', matchedTx.walletAddress || '', 'Approved').catch(e => console.warn('Withdrawal approve email error:', e));
+        triggerFcmWithdrawalApproved(userObj.email, matchedTx.amount);
       }
-    } catch (_) {}
+
+      if (isFirstDeposit && bonusAmount > 0) {
+        triggerFcmReferralBonus(userObj.email, bonusAmount, 'First Deposit Welcome Bonus');
+        const referralCodeClean = userObj.referredBy?.trim().toUpperCase();
+        const referrer = updatedUsers.find(u => u.referralCode.toUpperCase() === referralCodeClean);
+        if (referrer) {
+          triggerFcmReferralBonus(referrer.email, bonusAmount, userObj.email);
+        }
+      }
+    } catch (e) {
+      console.warn('FCM Push Notification approval trigger error:', e);
+    }
   };
 
   const handleRejectTransaction = (txId: string) => {
@@ -1483,14 +1467,16 @@ export default function App() {
       setUsersListState(updatedUsers);
     }
 
-    // Dispatch rejection notification email
+    // Dispatch rejection notification email & FCM push notification
     const userObj = usersListState.find(u => u.id === matchedTx.userId);
     if (userObj) {
       try {
         if (matchedTx.type === 'Deposit') {
           sendDepositEmail(userObj.email, userObj.name, matchedTx.amount, matchedTx.network || 'TRC20', matchedTx.txHash || '', 'Rejected').catch(e => console.warn('Deposit reject email error:', e));
+          triggerFcmDepositRejected(userObj.email, matchedTx.amount);
         } else if (matchedTx.type === 'Withdrawal') {
           sendWithdrawalEmail(userObj.email, userObj.name, matchedTx.amount, matchedTx.network || 'TRC20', matchedTx.walletAddress || '', 'Rejected').catch(e => console.warn('Withdrawal reject email error:', e));
+          triggerFcmWithdrawalRejected(userObj.email, matchedTx.amount);
         }
       } catch (_) {}
     }
