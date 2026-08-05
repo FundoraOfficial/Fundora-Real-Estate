@@ -142,8 +142,7 @@ export default async function handler(req: any, res: any) {
                 priority: 'high',
                 visibility: 'public',
                 defaultSound: true,
-                defaultVibrateTimings: true,
-                clickAction: 'FLUTTER_NOTIFICATION_CLICK'
+                defaultVibrateTimings: true
               }
             }
           };
@@ -177,8 +176,7 @@ export default async function handler(req: any, res: any) {
                 priority: 'high',
                 visibility: 'public',
                 defaultSound: true,
-                defaultVibrateTimings: true,
-                clickAction: 'FLUTTER_NOTIFICATION_CLICK'
+                defaultVibrateTimings: true
               }
             }
           };
