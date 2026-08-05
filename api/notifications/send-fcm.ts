@@ -1,5 +1,6 @@
 import { initializeApp, cert, getApps, App } from 'firebase-admin/app';
 import { getMessaging, TokenMessage, TopicMessage } from 'firebase-admin/messaging';
+import { getFirestore } from 'firebase-admin/firestore';
 
 // Singleton Firebase Admin instance
 let firebaseAdminApp: App | null = null;
@@ -64,7 +65,8 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: 'Method not allowed. Use POST.' });
   }
 
-  const { userEmail, userId, title, body, type, route, channelId, extraData, targetToken } = req.body || {};
+  const { userEmail, userId, title, body, type, route, channelId, extraData } = req.body || {};
+  let targetToken = req.body?.targetToken;
 
   try {
     console.log(`[FCM Vercel API] Push request for "${userEmail || userId || 'token'}": "${title}" - "${body}"`);
@@ -90,6 +92,36 @@ export default async function handler(req: any, res: any) {
         }
       }
 
+      // If direct targetToken was not supplied in request, search user document in Firestore
+      if (!targetToken && (userId || userEmail)) {
+        try {
+          const db = getFirestore(adminApp);
+          if (userId) {
+            const userDoc = await db.collection('users').doc(userId).get();
+            if (userDoc.exists) {
+              targetToken = userDoc.data()?.fcmToken;
+            }
+          }
+          if (!targetToken && userEmail) {
+            const cleanEmail = userEmail.trim().toLowerCase();
+            const emailDoc = await db.collection('users').doc(cleanEmail).get();
+            if (emailDoc.exists) {
+              targetToken = emailDoc.data()?.fcmToken;
+            } else {
+              const querySnap = await db.collection('users').where('email', '==', cleanEmail).limit(1).get();
+              if (!querySnap.empty && querySnap.docs[0]) {
+                targetToken = querySnap.docs[0].data()?.fcmToken;
+              }
+            }
+          }
+          if (targetToken) {
+            console.log(`[FCM Vercel API] Retrieved target FCM token from Firestore for ${userId || userEmail}`);
+          }
+        } catch (fsErr: any) {
+          console.warn('[FCM Vercel API] Firestore token lookup warning:', fsErr?.message || fsErr);
+        }
+      }
+
       // Option A: Send via direct target FCM token
       if (targetToken) {
         try {
@@ -103,8 +135,14 @@ export default async function handler(req: any, res: any) {
             android: {
               priority: 'high',
               notification: {
+                title: notificationTitle,
+                body: notificationBody,
                 sound: 'default',
                 channelId: targetChannel,
+                priority: 'high',
+                visibility: 'public',
+                defaultSound: true,
+                defaultVibrateTimings: true,
                 clickAction: 'FLUTTER_NOTIFICATION_CLICK'
               }
             }
@@ -112,13 +150,13 @@ export default async function handler(req: any, res: any) {
 
           const messageId = await getMessaging(adminApp).send(tokenMsg);
           console.log(`[FCM Vercel API] Successfully sent to FCM token: ${messageId}`);
-          return res.status(200).json({ success: true, via: 'firebase_admin_sdk', target: 'token', messageId });
+          return res.status(200).json({ success: true, via: 'firebase_admin_sdk', target: 'token', messageId, tokenUsed: targetToken });
         } catch (tokenErr: any) {
           console.warn(`[FCM Vercel API] Direct token send warning: ${tokenErr?.message || tokenErr}`);
         }
       }
 
-      // Option B: Send via User Topic
+      // Option B: Send via User Topic fallback
       if (userEmail) {
         try {
           const topicName = `user_${userEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
@@ -132,8 +170,14 @@ export default async function handler(req: any, res: any) {
             android: {
               priority: 'high',
               notification: {
+                title: notificationTitle,
+                body: notificationBody,
                 sound: 'default',
                 channelId: targetChannel,
+                priority: 'high',
+                visibility: 'public',
+                defaultSound: true,
+                defaultVibrateTimings: true,
                 clickAction: 'FLUTTER_NOTIFICATION_CLICK'
               }
             }
@@ -152,7 +196,7 @@ export default async function handler(req: any, res: any) {
     return res.status(200).json({
       success: false,
       via: 'vercel_serverless_handler',
-      message: 'Firebase Admin SDK credentials not configured in Vercel environment variables.',
+      message: 'Firebase Admin SDK credentials not configured in Vercel environment variables or token missing.',
       requiredEnvVar: 'FIREBASE_SERVICE_ACCOUNT_JSON'
     });
   } catch (err: any) {

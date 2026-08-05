@@ -131,6 +131,10 @@ export async function initFcmPushNotifications(currentUser?: UserAccount | null)
         // Register Push Notification Event Listeners
         PushNotifications.addListener('registration', async (token) => {
           console.log(`[FCM Native Engine SUCCESS] Registered with FCM! Device Token: ${token.value}`);
+          currentRegisteredToken = token.value;
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('fundora_device_push_token', token.value);
+          }
           await saveFcmTokenToUser(token.value, currentUser?.id || currentUser?.email);
         });
 
@@ -217,10 +221,14 @@ export async function sendFcmEventNotification(params: {
   type: 'deposit' | 'withdrawal' | 'investment' | 'profit' | 'community' | 'referral' | 'system' | 'kyc' | 'security';
   route?: string;
   extraData?: Record<string, any>;
+  targetToken?: string;
 }): Promise<boolean> {
   const { userEmail, userId, title, body, type, route, extraData } = params;
 
   console.log(`[FCM Event Dispatcher] Sending FCM Push Notification ("${title}") to ${userEmail}...`);
+
+  // Extract FCM push token from params, in-memory cache, or localStorage
+  const resolvedTargetToken = params.targetToken || currentRegisteredToken || (typeof window !== 'undefined' ? localStorage.getItem('fundora_device_push_token') || undefined : undefined);
 
   // 1. Save notification to user's history in Firestore so it's reflected inside user account
   if (isFirebaseEnabled()) {
@@ -242,10 +250,12 @@ export async function sendFcmEventNotification(params: {
     }
   }
 
-  // 2. Post to backend FCM push gateway endpoint (Vercel Serverless or Cloud Run backend)
+  // 2. Post to backend FCM push gateway endpoint (Vercel Serverless Production API)
   try {
-    const apiBase = import.meta.env.VITE_VERCEL_API_URL || import.meta.env.VITE_BACKEND_URL || (typeof window !== 'undefined' ? window.location.origin : '');
+    const vercelProdBase = 'https://fundora-real-estate.vercel.app';
+    const apiBase = import.meta.env.VITE_VERCEL_API_URL || import.meta.env.VITE_BACKEND_URL || vercelProdBase;
     const backendUrl = `${apiBase.replace(/\/$/, '')}/api/notifications/send-fcm`;
+
     const response = await fetch(backendUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -257,7 +267,8 @@ export async function sendFcmEventNotification(params: {
         type,
         route,
         channelId: FCM_CHANNEL_ID,
-        extraData
+        extraData,
+        targetToken: resolvedTargetToken
       })
     });
 
