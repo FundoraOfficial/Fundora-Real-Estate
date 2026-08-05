@@ -130,7 +130,15 @@ export default function App() {
   const [projectsList, setProjectsList] = useState<RealEstateProject[]>(() => {
     const saved = localStorage.getItem('inv_projects');
     const loaded: RealEstateProject[] = saved ? JSON.parse(saved) : INITIAL_PROJECTS;
-    return loaded.map(p => (p.id === 'proj-6' || p.status === 'Active' || (p.name && p.name.includes('Emaar'))) ? { ...p, expectedRoi: 40.5 } : p);
+    return loaded.map(p => {
+      if (p.id === 'proj-3' || (p.name && p.name.includes('Kensington'))) {
+        return { ...p, expectedRoi: 50.8, durationMonths: 2 };
+      }
+      if (p.id === 'proj-6' || p.status === 'Active' || (p.name && p.name.includes('Emaar'))) {
+        return { ...p, expectedRoi: 40.5 };
+      }
+      return p;
+    });
   });
 
   const [transactionsList, setTransactionsList] = useState<Transaction[]>(() => {
@@ -817,15 +825,93 @@ export default function App() {
   useEffect(() => {
     if (!isFirebaseSynced) return;
 
+    const checkExpiredSlotsToday = (currentHour: number, todayStr: string) => {
+      const newExpired: ProfitClaimRecord[] = [];
+      usersListState.forEach(user => {
+        const userInvestments = investmentsList.filter(inv => inv.userId === user.id || inv.userEmail?.toLowerCase() === user.email.toLowerCase());
+        const dailyProfitSum = userInvestments.reduce((sum, inv) => {
+          const isActive = inv.status === 'Active' || inv.status === undefined;
+          return isActive ? sum + inv.dailyProfitRate : sum;
+        }, 0);
+
+        if (dailyProfitSum > 0) {
+          const slotProfit = Math.round((dailyProfitSum / 2) * 100) / 100;
+          
+          // Slot 16 (04:00 PM - 05:00 PM) expires after hour 16 ends (i.e. hour >= 17)
+          if (currentHour >= 17) {
+            const hasClaimed = claimsHistory.some(c =>
+              (c.userId === user.id || c.userEmail?.toLowerCase() === user.email.toLowerCase()) &&
+              c.date === todayStr &&
+              c.status === 'Claimed' &&
+              c.slot === 16
+            );
+            const alreadyRecorded = claimsHistory.some(c =>
+              (c.userId === user.id || c.userEmail?.toLowerCase() === user.email.toLowerCase()) &&
+              c.date === todayStr &&
+              (c.status === 'Missed' || c.status === 'Expired') &&
+              c.slot === 16
+            );
+            if (!hasClaimed && !alreadyRecorded) {
+              newExpired.push({
+                id: `claim-exp-${user.id}-16-${Date.now()}`,
+                userId: user.id,
+                userEmail: user.email,
+                date: todayStr,
+                amount: slotProfit,
+                status: 'Expired',
+                slot: 16
+              });
+            }
+          }
+
+          // Slot 21 (09:00 PM - 10:00 PM) expires after hour 21 ends (i.e. hour >= 22)
+          if (currentHour >= 22) {
+            const hasClaimed = claimsHistory.some(c =>
+              (c.userId === user.id || c.userEmail?.toLowerCase() === user.email.toLowerCase()) &&
+              c.date === todayStr &&
+              c.status === 'Claimed' &&
+              c.slot === 21
+            );
+            const alreadyRecorded = claimsHistory.some(c =>
+              (c.userId === user.id || c.userEmail?.toLowerCase() === user.email.toLowerCase()) &&
+              c.date === todayStr &&
+              (c.status === 'Missed' || c.status === 'Expired') &&
+              c.slot === 21
+            );
+            if (!hasClaimed && !alreadyRecorded) {
+              newExpired.push({
+                id: `claim-exp-${user.id}-21-${Date.now()}`,
+                userId: user.id,
+                userEmail: user.email,
+                date: todayStr,
+                amount: slotProfit,
+                status: 'Expired',
+                slot: 21
+              });
+            }
+          }
+        }
+      });
+
+      if (newExpired.length > 0) {
+        setClaimsHistory(prev => [...newExpired, ...prev]);
+        newExpired.forEach(cl => saveClaimToFirebase(cl));
+      }
+    };
+
     const runAutoCheck = async () => {
       if (isAutoCheckingRef.current) return;
       isAutoCheckingRef.current = true;
       try {
         const secureNow = await getSecureServerTime();
         const todayStr = secureNow.toISOString().slice(0, 10);
+        const currentHour = secureNow.getHours();
         const lastRolloverDate = localStorage.getItem('inv_last_rollover_date');
 
-        console.log('[Auto-Rollover] Secure Date Check:', { todayStr, lastRolloverDate });
+        console.log('[Auto-Rollover] Secure Date Check:', { todayStr, lastRolloverDate, currentHour });
+
+        // Auto-check expired claim slots for today
+        checkExpiredSlotsToday(currentHour, todayStr);
 
         if (!lastRolloverDate) {
           // Initialize last_rollover_date on fresh database load so we don't double trigger immediately on first install
@@ -1248,6 +1334,8 @@ export default function App() {
       userEmail: activeUser.email,
       type: 'Withdrawal',
       amount,
+      netAmount: netPayout,
+      feeAmount,
       network,
       walletAddress: address,
       date: new Date().toISOString().replace('T', ' ').slice(0, 16),
@@ -1583,16 +1671,38 @@ export default function App() {
     addSystemLog('Admin_Action', `Compliance Admin adjusted funds for ${userEmail}: ${type === 'add' ? 'Added' : 'Deducted'} $${amount.toFixed(2)} USDT.`, 'Secure');
   };
 
-  // Unbind user wallet address
+  // Request wallet unbind from user side
+  const handleRequestUnbindWallet = (network: 'TRC20' | 'BEP20') => {
+    if (!activeUser) return;
+    const currentWallet = activeUser.wallet || { usdtTrc20Address: '', usdtBep20Address: '', isVerified: false };
+    const updatedWallet = {
+      ...currentWallet,
+      ...(network === 'TRC20' 
+        ? { trc20UnbindPending: true, trc20UnbindRequestedAt: new Date().toISOString() } 
+        : { bep20UnbindPending: true, bep20UnbindRequestedAt: new Date().toISOString() })
+    };
+    const updatedUser = {
+      ...activeUser,
+      wallet: updatedWallet
+    };
+    setActiveUser(updatedUser);
+    setUsersListState(prev => prev.map(u => (u.id === updatedUser.id || (u.email && u.email.trim().toLowerCase() === updatedUser.email.trim().toLowerCase())) ? updatedUser : u));
+    saveAndSyncUser(updatedUser);
+    addSystemLog('Wallet_Verification', `User ${updatedUser.email} requested unbind for ${network} wallet. Awaiting Admin clearance.`, 'Secure');
+  };
+
+  // Unbind user wallet address (Approved by Admin or manual admin action)
   const handleUnbindUserWallet = (userId: string, network: 'TRC20' | 'BEP20' | 'both') => {
     setUsersListState(prev => prev.map(u => {
       if (u.id === userId) {
         const updatedWallet = { ...(u.wallet || { usdtTrc20Address: '', usdtBep20Address: '', isVerified: false }) };
         if (network === 'TRC20' || network === 'both') {
           updatedWallet.usdtTrc20Address = '';
+          updatedWallet.trc20UnbindPending = false;
         }
         if (network === 'BEP20' || network === 'both') {
           updatedWallet.usdtBep20Address = '';
+          updatedWallet.bep20UnbindPending = false;
         }
         if (!updatedWallet.usdtTrc20Address && !updatedWallet.usdtBep20Address) {
           updatedWallet.isVerified = false;
@@ -1614,7 +1724,38 @@ export default function App() {
 
     const userObj = usersListState.find(u => u.id === userId);
     const userEmail = userObj ? userObj.email : 'Unknown';
-    addSystemLog('Admin_Action', `Compliance Admin reset/unbound ${network} wallet address for ${userEmail}.`, 'Secure');
+    addSystemLog('Admin_Action', `Compliance Admin approved/unbound ${network} wallet address for ${userEmail}.`, 'Secure');
+  };
+
+  // Reject user wallet unbind request
+  const handleRejectUnbindUserWallet = (userId: string, network: 'TRC20' | 'BEP20' | 'both') => {
+    setUsersListState(prev => prev.map(u => {
+      if (u.id === userId) {
+        const updatedWallet = { ...(u.wallet || { usdtTrc20Address: '', usdtBep20Address: '', isVerified: false }) };
+        if (network === 'TRC20' || network === 'both') {
+          updatedWallet.trc20UnbindPending = false;
+        }
+        if (network === 'BEP20' || network === 'both') {
+          updatedWallet.bep20UnbindPending = false;
+        }
+
+        const updatedU = {
+          ...u,
+          wallet: updatedWallet
+        };
+
+        if (activeUser && activeUser.id === u.id) {
+          setActiveUser(updatedU);
+        }
+        saveAndSyncUser(updatedU);
+        return updatedU;
+      }
+      return u;
+    }));
+
+    const userObj = usersListState.find(u => u.id === userId);
+    const userEmail = userObj ? userObj.email : 'Unknown';
+    addSystemLog('Admin_Action', `Compliance Admin rejected ${network} wallet unbind request for ${userEmail}.`, 'Secure');
   };
 
   // Delete User permanently from Firestore & Local Storage
@@ -1777,6 +1918,8 @@ export default function App() {
     }
 
     const currentSlot = currentHour;
+    // Divide daily profit across the 2 claim slots (50% per claim slot)
+    const slotProfitAmount = Math.round((dailyProfitSum / 2) * 100) / 100;
 
     // Check if they already claimed today in this specific slot based on secure date
     const alreadyClaimed = claimsHistory.some(c => 
@@ -1792,8 +1935,8 @@ export default function App() {
     // Update user balance
     const updatedUser = {
       ...activeUser,
-      balance: Math.round((activeUser.balance + dailyProfitSum) * 100) / 100,
-      totalProfitEarned: activeUser.totalProfitEarned + dailyProfitSum
+      balance: Math.round((activeUser.balance + slotProfitAmount) * 100) / 100,
+      totalProfitEarned: Math.round((activeUser.totalProfitEarned + slotProfitAmount) * 100) / 100
     };
 
     // Log Claim Receipt Transaction
@@ -1802,10 +1945,10 @@ export default function App() {
       userId: activeUser.id,
       userEmail: activeUser.email,
       type: 'Profit Claim',
-      amount: dailyProfitSum,
+      amount: slotProfitAmount,
       date: secureNow.toISOString().replace('T', ' ').slice(0, 16),
       status: 'Completed',
-      description: `Dispatched fractional profit yield of $${dailyProfitSum.toFixed(2)} (${currentSlot === 16 ? '04:00 PM' : '09:00 PM'} Slot)`
+      description: `Dispatched fractional profit yield of $${slotProfitAmount.toFixed(2)} (${currentSlot === 16 ? '04:00 PM' : '09:00 PM'} Slot)`
     };
 
     // Add record to claims list
@@ -1814,7 +1957,7 @@ export default function App() {
       userId: activeUser.id,
       userEmail: activeUser.email,
       date: todayStr,
-      amount: dailyProfitSum,
+      amount: slotProfitAmount,
       status: 'Claimed',
       claimedAt: `${currentHour}:${currentMinute.toString().padStart(2, '0')}`,
       slot: currentSlot
@@ -1829,8 +1972,8 @@ export default function App() {
     setClaimsHistory(prev => [newClaimRecord, ...prev]);
     saveClaimToFirebase(newClaimRecord);
 
-    addSystemLog('Large_Withdrawal', `Daily profit payout of $${dailyProfitSum} claims validated successfully at ${currentHour}:${currentMinute} in ${currentSlot === 16 ? '04:00 PM' : '09:00 PM'} slot.`, 'Secure');
-    return { success: true, type: 'success' as const, amount: dailyProfitSum };
+    addSystemLog('Large_Withdrawal', `Daily profit payout of $${slotProfitAmount} claims validated successfully at ${currentHour}:${currentMinute} in ${currentSlot === 16 ? '04:00 PM' : '09:00 PM'} slot.`, 'Secure');
+    return { success: true, type: 'success' as const, amount: slotProfitAmount };
   };
 
   // Emergency early liquidation with 20% penalty
@@ -1919,23 +2062,35 @@ export default function App() {
       }, 0);
 
       if (dailyProfitSum > 0) {
-        // Check if user already claimed yesterday
-        const hasClaimed = claimsHistory.some(c => 
-          (c.userId === user.id || c.userEmail?.toLowerCase() === user.email.toLowerCase()) &&
-          c.date === yesterdayStr && 
-          c.status === 'Claimed'
-        );
+        const slotProfit = Math.round((dailyProfitSum / 2) * 100) / 100;
 
-        if (!hasClaimed) {
-          newMissedRecords.push({
-            id: `claim-miss-${user.id}-${Date.now()}`,
-            userId: user.id,
-            userEmail: user.email,
-            date: yesterdayStr,
-            amount: dailyProfitSum,
-            status: 'Missed'
-          });
-        }
+        // Check both slots 16 (04:00 PM) and 21 (09:00 PM) for yesterday
+        [16, 21].forEach(slot => {
+          const hasClaimed = claimsHistory.some(c => 
+            (c.userId === user.id || c.userEmail?.toLowerCase() === user.email.toLowerCase()) &&
+            c.date === yesterdayStr && 
+            c.status === 'Claimed' &&
+            c.slot === slot
+          );
+          const alreadyRecorded = claimsHistory.some(c => 
+            (c.userId === user.id || c.userEmail?.toLowerCase() === user.email.toLowerCase()) &&
+            c.date === yesterdayStr && 
+            (c.status === 'Missed' || c.status === 'Expired') &&
+            c.slot === slot
+          );
+
+          if (!hasClaimed && !alreadyRecorded) {
+            newMissedRecords.push({
+              id: `claim-miss-${user.id}-${slot}-${Date.now()}`,
+              userId: user.id,
+              userEmail: user.email,
+              date: yesterdayStr,
+              amount: slotProfit,
+              status: 'Missed',
+              slot
+            });
+          }
+        });
       }
     });
 
@@ -2138,6 +2293,8 @@ export default function App() {
           onLogout={handleLogout}
           onNavigateAdmin={handleNavigateAdmin}
           onBindWallet={handleBindWallet}
+          onRequestUnbindWallet={handleRequestUnbindWallet}
+          onDirectUnbindWallet={(net) => handleUnbindUserWallet(activeUser.id, net)}
           onSubmitDeposit={handleSubmitDeposit}
           onSubmitWithdrawal={handleSubmitWithdrawal}
           onPurchaseShares={handlePurchaseShares}
@@ -2172,6 +2329,7 @@ export default function App() {
           onUpdateProjectRoi={handleUpdateProjectRoi}
           onAdjustUserFunds={handleAdjustUserFunds}
           onUnbindUserWallet={handleUnbindUserWallet}
+          onRejectUnbindUserWallet={handleRejectUnbindUserWallet}
           onUpdateProject={handleUpdateProject}
           onDeleteProject={handleDeleteProject}
           onUpdateInquiry={handleUpdateInquiry}

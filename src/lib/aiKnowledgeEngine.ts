@@ -126,10 +126,10 @@ export const STRUCTURED_FAQ_DATABASE: StructuredFAQ[] = [
         {
           name: 'Kensington Palace Gardens Suites',
           location: 'Kensington, London, UK',
-          expectedAnnualRoi: '14.8% APR',
-          estimatedDailyYield: '~0.9% Daily',
+          expectedAnnualRoi: '50.8% APR',
+          estimatedDailyYield: '~1.4% Daily',
           sharePrice: '$150 per share',
-          durationMonths: 12,
+          durationMonths: 2,
           status: 'Sold Out (1000 shares funded)'
         }
       ]
@@ -146,8 +146,9 @@ export const STRUCTURED_FAQ_DATABASE: StructuredFAQ[] = [
 
 • **Completed / Sold-Out Property**:
   🏰 **Kensington Palace Gardens Suites** (London, UK)
-  - **Projected Annual ROI**: **14.8% APR** (~0.9% daily yield)
+  - **Projected Annual ROI**: **50.8% APR** (~1.4% daily yield)
   - **Share Price**: $150 per share
+  - **Investment Term**: 2 Months
   - **Status**: 100% Fully Funded / Sold Out
 
 • **Daily Yield Dispatches**:
@@ -166,7 +167,8 @@ export const STRUCTURED_FAQ_DATABASE: StructuredFAQ[] = [
 
 • **مکمل فنڈڈ پراپرٹی**:
   🏰 **کینسنگٹن پیلس گارڈنز سویٹس** (لندن، یو کے)
-  - **سالانہ ROI**: **14.8% APR**
+  - **سالانہ ROI**: **50.8% APR**
+  - **مدت**: 2 ماہ
   - **سٹیٹس**: 100% سولڈ آؤٹ
 
 • **روزانہ منافع کلیم کرنے کا طریقہ**:
@@ -185,7 +187,8 @@ export const STRUCTURED_FAQ_DATABASE: StructuredFAQ[] = [
 
 • **Sold-Out Property**:
   🏰 **Kensington Palace Gardens** (London, UK)
-  - **Annual ROI**: **14.8% APR** (100% Sold Out)
+  - **Annual ROI**: **50.8% APR** (100% Sold Out)
+  - **Term**: 2 Months
 
 • **Daily Profit Payouts**:
   - Daily yields range between **0.8% se 1.5% daily**.
@@ -202,7 +205,8 @@ export const STRUCTURED_FAQ_DATABASE: StructuredFAQ[] = [
 
 • **المشروع المكتمل**:
   🏰 **Kensington Palace Gardens** (لندن، المملكة المتحدة)
-  - **العائد السنوي**: **14.8% APR** (مكتمل بالكامل)
+  - **العائد السنوي**: **50.8% APR** (مكتمل بالكامل)
+  - **المدة**: شهران
 
 • **طريقة استلام العائد اليومي**:
   - يتراوح العائد الإيجاري اليومي بين **0.8% إلى 1.5%**.

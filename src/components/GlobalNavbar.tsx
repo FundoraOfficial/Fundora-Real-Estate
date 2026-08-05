@@ -978,6 +978,7 @@ export default function GlobalNavbar({
                   setQuickActionsOpen(false);
                   onNavigate('dashboard');
                   if (setActiveTab) setActiveTab('wallet');
+                  window.dispatchEvent(new CustomEvent('open-wallet-subtab', { detail: 'deposit' }));
                   setTimeout(() => {
                     const el = document.getElementById('binance-deposit-module');
                     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1000,6 +1001,7 @@ export default function GlobalNavbar({
                   setQuickActionsOpen(false);
                   onNavigate('dashboard');
                   if (setActiveTab) setActiveTab('wallet');
+                  window.dispatchEvent(new CustomEvent('open-wallet-subtab', { detail: 'withdraw' }));
                   setTimeout(() => {
                     const el = document.getElementById('binance-withdrawal-module');
                     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });

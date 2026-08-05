@@ -15,8 +15,8 @@ export const INITIAL_PROJECTS: RealEstateProject[] = [
     totalShares: 1000,
     availableShares: 0, // Sold Out example
     pricePerShare: 150,
-    expectedRoi: 14.8,
-    durationMonths: 12,
+    expectedRoi: 50.8,
+    durationMonths: 2,
     description: 'Luxurious fully-furnished serviced studio apartments managed by a premium London hospitality chain. It offers a hassle-free, fully managed luxury residential yield with exceptional occupancy rates.',
     status: 'Sold Out',
     documents: ['Kensington_Palace_Specs.pdf', 'Kensington_Palace_Approval.pdf', 'Kensington_Palace_NOC.pdf']

@@ -162,6 +162,13 @@ export const loadProjectsFromFirebase = async (): Promise<RealEstateProject[] | 
     if (snapshot.empty) return INITIAL_PROJECTS;
     const projects = snapshot.docs.map(d => d.data() as RealEstateProject);
     return projects.map(p => {
+      if (p.id === 'proj-3' || (p.name && p.name.includes('Kensington'))) {
+        const updated = { ...p, expectedRoi: 50.8, durationMonths: 2 };
+        if (p.expectedRoi !== 50.8 || p.durationMonths !== 2) {
+          saveProjectToFirebase(updated).catch(() => {});
+        }
+        return updated;
+      }
       if (p.id === 'proj-6' || p.status === 'Active' || (p.name && p.name.includes('Emaar'))) {
         const updated = { ...p, expectedRoi: 40.5 };
         if (p.expectedRoi !== 40.5) {

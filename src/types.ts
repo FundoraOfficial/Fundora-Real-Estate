@@ -28,6 +28,10 @@ export interface WalletInfo {
   usdtTrc20Address: string;
   usdtBep20Address: string;
   isVerified: boolean;
+  trc20UnbindPending?: boolean;
+  bep20UnbindPending?: boolean;
+  trc20UnbindRequestedAt?: string;
+  bep20UnbindRequestedAt?: string;
 }
 
 export interface InvestmentRecord {
@@ -51,6 +55,8 @@ export interface Transaction {
   userEmail: string;
   type: TransactionType;
   amount: number;
+  netAmount?: number;
+  feeAmount?: number;
   date: string;
   status: TransactionStatus;
   txHash?: string;

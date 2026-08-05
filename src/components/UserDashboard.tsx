@@ -15,7 +15,7 @@ import {
   TrendingUp, Wallet, ArrowDownCircle, ArrowUpCircle, Users, Percent, Gift, Clock,
   Building, MapPin, Search, Filter, ShieldCheck, ChevronRight, ChevronLeft, Calculator, CheckCircle2,
   AlertTriangle, Copy, Trash, Upload, Landmark, Sparkles, RefreshCw, X, XCircle, ChevronDown, Award,
-  FileText, Plus, User, Lock, Check, Crown, Shield, Download, Printer, ZoomIn, ZoomOut, Eye, EyeOff,
+  FileText, Plus, User, Lock, Unlock, CheckCircle, Check, Crown, Shield, Download, Printer, ZoomIn, ZoomOut, Eye, EyeOff,
   ArrowDownLeft, ArrowUpRight, Briefcase, Coins, History, ListFilter, Calendar, Fingerprint, Smartphone,
   Bell, BellOff, Volume2, Send
 } from 'lucide-react';
@@ -40,6 +40,8 @@ interface UserDashboardProps {
   onNavigateAdmin: () => void;
   // Transactions
   onBindWallet: (trc20: string, bep20: string) => void;
+  onRequestUnbindWallet?: (network: 'TRC20' | 'BEP20') => void;
+  onDirectUnbindWallet?: (network: 'TRC20' | 'BEP20') => void;
   onSubmitDeposit: (amount: number, network: 'TRC20' | 'BEP20', txHash: string, proofImg: string) => void;
   onSubmitWithdrawal: (amount: number, network: 'TRC20' | 'BEP20', address: string) => void;
   onPurchaseShares: (projectId: string, sharesCount: number) => { success: boolean; error?: string };
@@ -155,6 +157,8 @@ export default function UserDashboard({
   onLogout,
   onNavigateAdmin,
   onBindWallet,
+  onRequestUnbindWallet,
+  onDirectUnbindWallet,
   onSubmitDeposit,
   onSubmitWithdrawal,
   onPurchaseShares,
@@ -238,6 +242,8 @@ export default function UserDashboard({
   const [scanSuccessMessage, setScanSuccessMessage] = useState<string | null>(null);
   const [showDepositConfirmModal, setShowDepositConfirmModal] = useState(false);
   const [submittedDepositData, setSubmittedDepositData] = useState<{ amount: number; network: string; txHash: string } | null>(null);
+  const [showWithdrawConfirmModal, setShowWithdrawConfirmModal] = useState(false);
+  const [submittedWithdrawalData, setSubmittedWithdrawalData] = useState<{ amount: number; network: string; address: string; fee: number; net: number } | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // Withdrawal Form Info
@@ -248,6 +254,18 @@ export default function UserDashboard({
   const [withdrawSuccessMsg, setWithdrawSuccessMsg] = useState('');
 
   React.useEffect(() => {
+    const trcBound = activeUser?.wallet?.usdtTrc20Address?.trim();
+    const bepBound = activeUser?.wallet?.usdtBep20Address?.trim();
+
+    // Auto-switch network if currently selected network is not bound but the other network is bound
+    if (withdrawNetwork === 'TRC20' && !trcBound && bepBound) {
+      setWithdrawNetwork('BEP20');
+      return;
+    } else if (withdrawNetwork === 'BEP20' && !bepBound && trcBound) {
+      setWithdrawNetwork('TRC20');
+      return;
+    }
+
     const boundAddress = withdrawNetwork === 'TRC20' 
       ? activeUser?.wallet?.usdtTrc20Address 
       : activeUser?.wallet?.usdtBep20Address;
@@ -257,6 +275,24 @@ export default function UserDashboard({
   // Copy helpers
   const [copiedText, setCopiedText] = useState('');
   const [walletSubTab, setWalletSubTab] = useState<'deposit' | 'withdraw'>('deposit');
+  
+  // Listen to open-wallet-subtab event from bottom navbar options
+  React.useEffect(() => {
+    const handleWalletSubTab = (e: Event) => {
+      const customEvent = e as CustomEvent<string>;
+      if (customEvent.detail === 'deposit' || customEvent.detail === 'withdraw') {
+        setWalletSubTab(customEvent.detail as 'deposit' | 'withdraw');
+        setTimeout(() => {
+          const targetId = customEvent.detail === 'deposit' ? 'binance-deposit-module' : 'binance-withdrawal-module';
+          document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
+      }
+    };
+    window.addEventListener('open-wallet-subtab', handleWalletSubTab);
+    return () => {
+      window.removeEventListener('open-wallet-subtab', handleWalletSubTab);
+    };
+  }, []);
   
   // Notification Preferences State
   const [notifPrefs, setNotifPrefs] = useState<NotificationPreferences>(getNotificationPreferences());
@@ -873,6 +909,12 @@ export default function UserDashboard({
     return claimsHistory.filter(c => c.status === 'Missed' || c.status === 'Expired').length;
   }, [claimsHistory]);
 
+  const missedClaimsTotalAmount = useMemo(() => {
+    return claimsHistory
+      .filter(c => c.status === 'Missed' || c.status === 'Expired')
+      .reduce((sum, c) => sum + c.amount, 0);
+  }, [claimsHistory]);
+
   const successfulClaims = useMemo(() => {
     return claimsHistory.filter(c => c.status === 'Claimed');
   }, [claimsHistory]);
@@ -1411,15 +1453,29 @@ export default function UserDashboard({
     const boundAddress = withdrawNetwork === 'TRC20' 
       ? activeUser?.wallet?.usdtTrc20Address 
       : activeUser?.wallet?.usdtBep20Address;
-    const targetAddress = boundAddress || withdrawAddressInput;
 
-    if (!targetAddress || targetAddress.length < 10) {
-      setWithdrawErrorMsg("Please provide a certified destination USDT address.");
-      showStatus("Withdrawal rejected: Wallet address destination required.", "error");
+    if (!boundAddress || boundAddress.trim().length < 10) {
+      setWithdrawErrorMsg(`Please bind your USDT (${withdrawNetwork}) wallet address under 'Bind Cryptographic Addresses' first.`);
+      showStatus(`Withdrawal rejected: No bound USDT ${withdrawNetwork} address found.`, "error");
       return;
     }
 
+    const targetAddress = boundAddress;
+
+    const fee = Math.round((withdrawAmount * 0.20) * 100) / 100;
+    const net = Math.max(0, withdrawAmount - fee);
+
     onSubmitWithdrawal(withdrawAmount, withdrawNetwork, targetAddress);
+
+    setSubmittedWithdrawalData({
+      amount: withdrawAmount,
+      network: withdrawNetwork,
+      address: targetAddress,
+      fee,
+      net
+    });
+    setShowWithdrawConfirmModal(true);
+
     setWithdrawSuccessMsg("Your withdrawal claim was logged! Pending inspection, your funds are securely reserved under audit lock.");
     showStatus("Withdrawal request created successfully! Funds in reserve lock.", "success");
   };
@@ -2034,9 +2090,14 @@ export default function UserDashboard({
                       </div>
                     </div>
                     <div className="space-y-1 relative z-10">
-                      <span className="text-xl sm:text-2xl font-black text-rose-400 font-mono tracking-tight">{missedClaimsCount} {missedClaimsCount === 1 ? 'Claim' : 'Claims'}</span>
-                      <span className="text-[8.5px] sm:text-[9.5px] text-rose-400 font-mono block whitespace-normal leading-snug">
-                        {missedClaimsCount === 0 ? "No unclaimed dividends" : "Missed daily claim windows"}
+                      <span className="text-xl sm:text-2xl font-black text-rose-400 font-mono tracking-tight">
+                        {missedClaimsTotalAmount > 0 ? `-$${missedClaimsTotalAmount.toFixed(2)}` : '$0.00'} <span className="text-xs text-rose-300 font-normal">USDT</span>
+                      </span>
+                      <div className="flex items-center gap-1.5 text-[9.5px] font-mono text-rose-300">
+                        <span className="px-1.5 py-0.5 bg-rose-500/20 rounded font-bold">{missedClaimsCount} {missedClaimsCount === 1 ? 'Missed Window' : 'Missed Windows'}</span>
+                      </div>
+                      <span className="text-[8.5px] sm:text-[9.5px] text-rose-400/80 font-mono block whitespace-normal leading-snug">
+                        {missedClaimsCount === 0 ? "No unclaimed dividends" : "Expired daily profit yield total"}
                       </span>
                     </div>
                   </div>
@@ -3019,33 +3080,28 @@ ${activeViewDoc.project.description}`
         {/* ==================== TAB 3: WALLET & DEPOSITS ==================== */}
         {activeTab === 'wallet' && (
           <div className="space-y-6">
-
-            {/* INTEGRATED WALLET BINDING CENTER */}
-            {(!activeUser?.wallet?.usdtTrc20Address && !activeUser?.wallet?.usdtBep20Address) && (
-              <div className="bg-[#0e112d] border border-indigo-500/40 rounded-[1.25rem] p-6.5 space-y-6 shadow-xl text-white animate-fadeIn">
+            {/* INTEGRATED WALLET BINDING / UNBIND CENTER */}
+            {/* Show Configuration Input Section ONLY IF at least one wallet address is unconfigured */}
+            {(!activeUser?.wallet?.usdtTrc20Address || !activeUser?.wallet?.usdtBep20Address) && (
+              <div id="wallet-binding-center" className="bg-[#0e112d] border border-indigo-500/40 rounded-[1.25rem] p-5 sm:p-6 space-y-5 shadow-xl text-white animate-fadeIn">
                 
-                {/* Always visible elegant header indicating configuration status */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4.5 border-b border-indigo-500/20 gap-3">
+                {/* Configuration header */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-indigo-500/20 gap-3">
                   <div className="flex items-center space-x-3.5">
                     <div className="p-2.5 bg-indigo-500/10 rounded-xl text-indigo-400 shrink-0 shadow-2xs border border-indigo-500/20">
                       <ShieldCheck className="w-5 h-5" />
                     </div>
                     <div>
                       <h4 className="text-sm font-sans font-bold text-white tracking-tight">
-                        Cryptographic Payout Node Lock
+                        Bind Cryptographic Receiving Addresses
                       </h4>
                       <p className="text-[10px] text-indigo-200/85 font-sans mt-0.5">
-                        Bind your designated Receiving USDT address strings to securely authorize automated withdraw processes.
+                        Bind your designated Receiving USDT address strings to authorize automated withdraws.
                       </p>
                     </div>
                   </div>
                   <div>
-                    {(activeUser?.wallet?.usdtTrc20Address && activeUser?.wallet?.usdtBep20Address) ? (
-                      <span className="text-[9px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 px-3 py-1 rounded-lg font-black uppercase tracking-wider inline-flex items-center gap-1.5 shadow-2xs">
-                        <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></span>
-                        Fully Bound & Locked
-                      </span>
-                    ) : (activeUser?.wallet?.usdtTrc20Address || activeUser?.wallet?.usdtBep20Address) ? (
+                    {(activeUser?.wallet?.usdtTrc20Address || activeUser?.wallet?.usdtBep20Address) ? (
                       <span className="text-[9px] font-mono bg-amber-500/10 text-amber-400 border border-amber-500/25 px-3 py-1 rounded-lg font-black uppercase tracking-wider inline-flex items-center gap-1.5 shadow-2xs">
                         <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse"></span>
                         Partially Bound
@@ -3053,140 +3109,134 @@ ${activeViewDoc.project.description}`
                     ) : (
                       <span className="text-[9px] font-mono bg-rose-500/10 text-rose-400 border border-rose-500/25 px-3 py-1 rounded-lg font-black uppercase tracking-wider inline-flex items-center gap-1.5 shadow-2xs">
                         <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-pulse"></span>
-                        Locks Unconfigured
+                        Unconfigured
                       </span>
                     )}
                   </div>
                 </div>
 
-                {/* Bound networks list */}
+                {/* Unbound networks binding form cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   
-                  {/* TRC20 Binding Card */}
-                  <div className={`p-5 rounded-2xl border transition-all duration-350 relative overflow-hidden ${
-                    activeUser?.wallet?.usdtTrc20Address 
-                      ? 'border-emerald-500/30 bg-gradient-to-br from-emerald-500/[0.08] to-emerald-600/[0.02] shadow-2xs text-white'
-                      : 'border-indigo-500/20 bg-[#13163a]/50 text-indigo-200 hover:border-indigo-500/40'
-                  }`}>
-                    <div className="flex items-center justify-between mb-3.5">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-sm shadow-red-500/20"></span>
-                        <span className="text-xs uppercase font-sans font-black text-white">USDT (TRC20 Network)</span>
-                      </div>
-                      {activeUser?.wallet?.usdtTrc20Address ? (
-                        <span className="text-[8.5px] font-black uppercase font-mono text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20 flex items-center gap-1 shadow-2xs">
-                          <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
-                          Active Bound
-                        </span>
-                      ) : (
+                  {/* TRC20 Binding Card (only if NOT configured) */}
+                  {!activeUser?.wallet?.usdtTrc20Address && (
+                    <div className="p-4 sm:p-5 rounded-2xl border border-indigo-500/20 bg-[#13163a]/50 text-indigo-200 hover:border-indigo-500/40 space-y-2">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-sm shadow-red-500/20"></span>
+                          <span className="text-xs uppercase font-sans font-black text-white">USDT (TRC20 Network)</span>
+                        </div>
                         <span className="text-[8.5px] font-black uppercase font-mono text-indigo-300 bg-[#060819] px-2.5 py-1 rounded-lg border border-indigo-500/30">
                           Unconfigured
                         </span>
-                      )}
+                      </div>
+                      <input 
+                        type="text"
+                        placeholder="Paste TRC20 Wallet address (starts with 'T'...)"
+                        value={trcLink}
+                        onChange={(e) => setTrcLink(e.target.value)}
+                        className="w-full bg-[#060819] border border-indigo-500/30 rounded-xl px-3.5 py-2.5 text-xs font-mono text-white placeholder:text-indigo-300/45 focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-500/30 transition-all shadow-2xs"
+                      />
                     </div>
-                    {activeUser?.wallet?.usdtTrc20Address ? (
-                      <div className="space-y-2">
-                        <div className="bg-[#060819] border border-indigo-500/20 px-3.5 py-2.5 rounded-xl text-xs font-mono text-indigo-200 truncate flex items-center justify-between gap-2 shadow-2xs">
-                          <span className="truncate select-all font-semibold">{activeUser?.wallet?.usdtTrc20Address}</span>
-                          <button 
-                            onClick={() => triggerCopy(activeUser?.wallet?.usdtTrc20Address || '', 'trc_wallet_copy')}
-                            className="text-slate-400 hover:text-emerald-400 shrink-0 cursor-pointer p-1 rounded-lg hover:bg-[#13163a] transition-colors"
-                            title="Copy Address"
-                          >
-                            {copiedText === 'trc_wallet_copy' ? (
-                              <span className="text-[9px] text-emerald-450 font-extrabold uppercase font-sans">Copied</span>
-                            ) : (
-                              <Copy className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        <input 
-                          type="text"
-                          placeholder="Paste TRC20 Wallet address (starts with 'T'...)"
-                          value={trcLink}
-                          onChange={(e) => setTrcLink(e.target.value)}
-                          className="w-full bg-[#060819] border border-indigo-500/30 rounded-xl px-3.5 py-2.5 text-xs font-mono text-white placeholder:text-indigo-300/45 focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-500/30 transition-all shadow-2xs"
-                        />
-                      </div>
-                    )}
-                  </div>
+                  )}
 
-                  {/* BEP20 Binding Card */}
-                  <div className={`p-5 rounded-2xl border transition-all duration-350 relative overflow-hidden ${
-                    activeUser?.wallet?.usdtBep20Address 
-                      ? 'border-emerald-500/30 bg-gradient-to-br from-emerald-500/[0.08] to-emerald-600/[0.02] shadow-2xs text-white'
-                      : 'border-indigo-500/20 bg-[#13163a]/50 text-indigo-200 hover:border-indigo-500/40'
-                  }`}>
-                    <div className="flex items-center justify-between mb-3.5">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full bg-yellow-500 shadow-sm shadow-yellow-500/20"></span>
-                        <span className="text-xs uppercase font-sans font-black text-white">USDT (BEP20 Network)</span>
-                      </div>
-                      {activeUser?.wallet?.usdtBep20Address ? (
-                        <span className="text-[8.5px] font-black uppercase font-mono text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20 flex items-center gap-1 shadow-2xs">
-                          <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
-                          Active Bound
-                        </span>
-                      ) : (
+                  {/* BEP20 Binding Card (only if NOT configured) */}
+                  {!activeUser?.wallet?.usdtBep20Address && (
+                    <div className="p-4 sm:p-5 rounded-2xl border border-indigo-500/20 bg-[#13163a]/50 text-indigo-200 hover:border-indigo-500/40 space-y-2">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-yellow-500 shadow-sm shadow-yellow-500/20"></span>
+                          <span className="text-xs uppercase font-sans font-black text-white">USDT (BEP20 Network)</span>
+                        </div>
                         <span className="text-[8.5px] font-black uppercase font-mono text-indigo-300 bg-[#060819] px-2.5 py-1 rounded-lg border border-indigo-500/30">
                           Unconfigured
                         </span>
-                      )}
+                      </div>
+                      <input 
+                        type="text"
+                        placeholder="Paste BEP20 Binance Chain address (starts with '0x'...)"
+                        value={bepLink}
+                        onChange={(e) => setBepLink(e.target.value)}
+                        className="w-full bg-[#060819] border border-indigo-500/30 rounded-xl px-3.5 py-2.5 text-xs font-mono text-white placeholder:text-indigo-300/45 focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-500/30 transition-all shadow-2xs"
+                      />
                     </div>
-                    {activeUser?.wallet?.usdtBep20Address ? (
-                      <div className="space-y-2">
-                        <div className="bg-[#060819] border border-indigo-500/20 px-3.5 py-2.5 rounded-xl text-xs font-mono text-indigo-200 truncate flex items-center justify-between gap-2 shadow-2xs">
-                          <span className="truncate select-all font-semibold">{activeUser?.wallet?.usdtBep20Address}</span>
-                          <button 
-                            onClick={() => triggerCopy(activeUser?.wallet?.usdtBep20Address || '', 'bep_wallet_copy')}
-                            className="text-slate-400 hover:text-emerald-400 shrink-0 cursor-pointer p-1 rounded-lg hover:bg-[#13163a] transition-colors"
-                            title="Copy Address"
-                          >
-                            {copiedText === 'bep_wallet_copy' ? (
-                              <span className="text-[9px] text-emerald-450 font-extrabold uppercase font-sans">Copied</span>
-                            ) : (
-                              <Copy className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        <input 
-                          type="text"
-                          placeholder="Paste BEP20 Binance Chain address (starts with '0x'...)"
-                          value={bepLink}
-                          onChange={(e) => setBepLink(e.target.value)}
-                          className="w-full bg-[#060819] border border-indigo-500/30 rounded-xl px-3.5 py-2.5 text-xs font-mono text-white placeholder:text-indigo-300/45 focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-500/30 transition-all shadow-2xs"
-                        />
-                      </div>
-                    )}
-                  </div>
+                  )}
 
                 </div>
 
-                {/* Inline Save button if any is unbound */}
-                {(!activeUser?.wallet?.usdtTrc20Address || !activeUser?.wallet?.usdtBep20Address) && (
-                  <div className="pt-4 border-t border-indigo-500/20 flex justify-end">
-                    <button
-                      onClick={() => {
-                        if (!trcLink && !bepLink) {
-                          showStatus("Please paste a wallet address for at least one network.", "error");
-                          return;
-                        }
-                        onBindWallet(trcLink || activeUser?.wallet?.usdtTrc20Address || '', bepLink || activeUser?.wallet?.usdtBep20Address || '');
-                        showStatus("Wallet addresses bound and verified securely! You can use them to auto-fill withdrawals instantly.", "success");
-                      }}
-                      className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 border border-emerald-400 text-white font-sans font-extrabold rounded-xl text-xs tracking-wider uppercase shadow-md hover:shadow-lg active:scale-95 transition-all cursor-pointer inline-flex items-center gap-2"
-                    >
-                      <span>💾</span>
-                      <span>Bind Cryptographic Addresses</span>
-                    </button>
-                  </div>
+                {/* Inline Save button */}
+                <div className="pt-4 border-t border-indigo-500/20 flex justify-end">
+                  <button
+                    onClick={() => {
+                      if (!trcLink && !bepLink) {
+                        showStatus("Please paste a wallet address for at least one network.", "error");
+                        return;
+                      }
+                      onBindWallet(
+                        trcLink || activeUser?.wallet?.usdtTrc20Address || '',
+                        bepLink || activeUser?.wallet?.usdtBep20Address || ''
+                      );
+                      setTrcLink('');
+                      setBepLink('');
+                      showStatus("Wallet address bound and saved successfully!", "success");
+                    }}
+                    className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 border border-emerald-400 text-white font-sans font-extrabold rounded-xl text-xs tracking-wider uppercase shadow-md hover:shadow-lg active:scale-95 transition-all cursor-pointer inline-flex items-center gap-2"
+                  >
+                    <span>💾</span>
+                    <span>Bind Cryptographic Address</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Micro Direct Unbind Buttons (BEP20 and TRC20) in 1 row when addresses are configured */}
+            {(activeUser?.wallet?.usdtTrc20Address || activeUser?.wallet?.usdtBep20Address) && (
+              <div className="grid grid-cols-2 gap-3">
+                
+                {/* BEP20 Micro Unbind Button */}
+                {activeUser?.wallet?.usdtBep20Address ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onDirectUnbindWallet) {
+                        onDirectUnbindWallet('BEP20');
+                      } else {
+                        const updatedW = { ...activeUser.wallet, usdtBep20Address: '', bep20UnbindPending: false };
+                        onUpdateUser({ wallet: updatedW });
+                      }
+                      showStatus("BEP20 wallet address unbound successfully!", "success");
+                    }}
+                    className="w-full py-2.5 px-3 bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 hover:text-rose-100 rounded-xl text-xs font-mono font-extrabold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 shadow-sm"
+                  >
+                    <span>🔓</span>
+                    <span>BEP20 Unbind</span>
+                  </button>
+                ) : (
+                  <div></div>
                 )}
+
+                {/* TRC20 Micro Unbind Button */}
+                {activeUser?.wallet?.usdtTrc20Address ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onDirectUnbindWallet) {
+                        onDirectUnbindWallet('TRC20');
+                      } else {
+                        const updatedW = { ...activeUser.wallet, usdtTrc20Address: '', trc20UnbindPending: false };
+                        onUpdateUser({ wallet: updatedW });
+                      }
+                      showStatus("TRC20 wallet address unbound successfully!", "success");
+                    }}
+                    className="w-full py-2.5 px-3 bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 hover:text-rose-100 rounded-xl text-xs font-mono font-extrabold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 shadow-sm"
+                  >
+                    <span>🔓</span>
+                    <span>TRC20 Unbind</span>
+                  </button>
+                ) : (
+                  <div></div>
+                )}
+
               </div>
             )}
 
@@ -3701,8 +3751,12 @@ ${activeViewDoc.project.description}`
                         }}
                         className="w-full bg-[#060819] border border-indigo-500/30 rounded-xl p-3 text-xs text-white font-bold focus:outline-none focus:border-emerald-500 cursor-pointer shadow-2xs transition-all"
                       >
-                        <option value="TRC20" className="bg-[#0e112d] text-white">USDT (TRC20 Tron Network)</option>
-                        <option value="BEP20" className="bg-[#0e112d] text-white">USDT (BEP20 BNB Smart Chain)</option>
+                        <option value="TRC20" className="bg-[#0e112d] text-white">
+                          USDT (TRC20 Tron Network) {activeUser?.wallet?.usdtTrc20Address ? '✓ Bound' : '⚠️ Unconfigured'}
+                        </option>
+                        <option value="BEP20" className="bg-[#0e112d] text-white">
+                          USDT (BEP20 BNB Smart Chain) {activeUser?.wallet?.usdtBep20Address ? '✓ Bound' : '⚠️ Unconfigured'}
+                        </option>
                       </select>
                     </div>
 
@@ -3721,90 +3775,111 @@ ${activeViewDoc.project.description}`
                     </div>
                   </div>
 
-                  {/* Recipient custom address with Auto-fill helper from bounds! */}
-                  <div className="space-y-2.5">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[10px] text-indigo-300 font-extrabold uppercase tracking-wider block flex items-center gap-1">
-                        3. Recipient Destination Address
-                      </span>
-                      
-                      {(() => {
-                        const boundAddress = withdrawNetwork === 'TRC20' 
-                          ? activeUser?.wallet?.usdtTrc20Address 
-                          : activeUser?.wallet?.usdtBep20Address;
-                        return boundAddress ? null : (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!boundAddress) {
-                                showStatus(`You have not bound an address for the ${withdrawNetwork} network yet. Please configure it in your profile first.`, "error");
-                                return;
-                              }
-                              setWithdrawAddressInput(boundAddress);
-                              showStatus(`Auto-fetched verified bound address for ${withdrawNetwork} successfully.`, "success");
-                            }}
-                            className="text-[9px] text-emerald-400 font-bold hover:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer"
-                          >
-                            🔗 Auto-Fetch Bound Address
-                          </button>
-                        );
-                      })()}
-                    </div>
+                  {/* Recipient Destination Address display / binding gate */}
+                  {(() => {
+                    const boundAddress = withdrawNetwork === 'TRC20' 
+                      ? activeUser?.wallet?.usdtTrc20Address 
+                      : activeUser?.wallet?.usdtBep20Address;
 
-                    {(() => {
-                      const boundAddress = withdrawNetwork === 'TRC20' 
-                        ? activeUser?.wallet?.usdtTrc20Address 
-                        : activeUser?.wallet?.usdtBep20Address;
+                    const isBound = !!(boundAddress && boundAddress.trim().length > 0);
+
+                    if (!isBound) {
+                      // HIDE address field until user configures Bind Cryptographic Addresses
                       return (
-                        <input 
-                          type="text"
-                          required
-                          value={boundAddress || withdrawAddressInput}
-                          onChange={(e) => {
-                            if (!boundAddress) {
-                              setWithdrawAddressInput(e.target.value);
-                            }
-                          }}
-                          readOnly={!!boundAddress}
-                          placeholder={`Enter verified USDT ${withdrawNetwork} address...`}
-                          className={`w-full border rounded-xl p-3 text-xs font-mono transition-all shadow-2xs focus:outline-none ${
-                            boundAddress 
-                              ? 'bg-[#0a141d] border-emerald-500/35 text-emerald-400 font-extrabold cursor-not-allowed'
-                              : 'bg-[#060819] border-indigo-500/30 text-white focus:border-emerald-500'
-                          }`}
-                        />
-                      );
-                    })()}
+                        <div className="bg-[#060819] border border-amber-500/35 rounded-2xl p-4 space-y-3 shadow-inner">
+                          <div className="flex items-center gap-2">
+                            <div className="p-1.5 bg-amber-500/15 text-amber-400 rounded-lg border border-amber-500/30 shrink-0">
+                              <AlertTriangle className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <span className="text-[11px] text-amber-300 font-extrabold uppercase tracking-wide block font-sans">
+                                3. Recipient Address Unconfigured
+                              </span>
+                              <span className="text-[10px] text-indigo-200/80 font-sans block">
+                                Destination address string is hidden until wallet binding is complete.
+                              </span>
+                            </div>
+                          </div>
 
-                    {/* Auto-fill banner alert of critical safety */}
-                    {(() => {
-                      const boundAddress = withdrawNetwork === 'TRC20' 
-                        ? activeUser?.wallet?.usdtTrc20Address 
-                        : activeUser?.wallet?.usdtBep20Address;
-                      return boundAddress ? (
+                          <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 text-[11px] text-amber-200/90 leading-relaxed font-sans space-y-2.5">
+                            <p>
+                              Withdrawal requests require a locked, pre-configured <strong>USDT ({withdrawNetwork})</strong> payout address string. Manual entry is disabled for security.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const el = document.getElementById('wallet-binding-center');
+                                if (el) {
+                                  el.scrollIntoView({ behavior: 'smooth' });
+                                } else {
+                                  showStatus(`Please configure your USDT ${withdrawNetwork} address under 'Bind Cryptographic Addresses'.`, "info");
+                                }
+                              }}
+                              className="px-3.5 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-extrabold rounded-lg text-[10px] uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-md transition-all active:scale-95"
+                            >
+                              <ShieldCheck className="w-3.5 h-3.5" />
+                              <span>Bind {withdrawNetwork} Address Now</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    // WHEN BOUND: SHOW Recipient Destination Address locked & non-editable
+                    return (
+                      <div className="space-y-2.5">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[10px] text-indigo-300 font-extrabold uppercase tracking-wider block flex items-center gap-1">
+                            3. Recipient Destination Address
+                          </span>
+                          <span className="px-2.5 py-1 bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[9px] font-mono font-bold rounded-lg uppercase tracking-wide flex items-center gap-1 shadow-2xs">
+                            <Lock className="w-3 h-3 text-emerald-400" /> Active Bound & Locked
+                          </span>
+                        </div>
+
+                        <div className="relative flex items-center">
+                          <input 
+                            type="text"
+                            readOnly
+                            disabled
+                            value={boundAddress}
+                            className="w-full bg-[#0a141d] border border-emerald-500/45 text-emerald-400 font-black font-mono text-xs rounded-xl p-3.5 pr-10 cursor-not-allowed select-all shadow-md focus:outline-none"
+                          />
+                          <Lock className="w-4 h-4 text-emerald-400 absolute right-3 pointer-events-none" />
+                        </div>
+
                         <div className="p-3 bg-emerald-500/10 border border-emerald-500/25 rounded-xl flex items-start gap-2.5 text-[10px] text-emerald-300 leading-normal font-sans shadow-2xs">
                           <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                           <div className="font-sans leading-relaxed text-emerald-200 font-semibold">
-                            This destination key is permanently bound and secured under your account. Withdrawals are strictly routed to this locked address. Contact support if unbind is required.
+                            This destination key is permanently bound and locked under your account. Manual edits are disabled.
                           </div>
                         </div>
-                      ) : (
-                        <div className="p-3 bg-amber-500/10 border border-amber-500/25 rounded-xl flex items-start gap-2.5 text-[10px] text-amber-300 leading-normal font-sans shadow-2xs">
-                          <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                          <div className="font-sans leading-relaxed text-indigo-200 font-semibold">
-                            Confirm that your receiving address string matches the selected network. Sent tokens on mismatched chain standards are irrecoverable and permanently lost.
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
+                      </div>
+                    );
+                  })()}
 
-                  <button
-                    type="submit"
-                    className="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-600 border border-emerald-400 text-white font-sans font-bold uppercase rounded-xl text-xs tracking-wider transition-all shadow-md active:scale-[0.99] cursor-pointer"
-                  >
-                    ⚡ Authorize & Dispatch Liquidation Transfer
-                  </button>
+                  {/* Submit Button */}
+                  {(() => {
+                    const boundAddress = withdrawNetwork === 'TRC20' 
+                      ? activeUser?.wallet?.usdtTrc20Address 
+                      : activeUser?.wallet?.usdtBep20Address;
+                    const isBound = !!(boundAddress && boundAddress.trim().length > 0);
+
+                    return (
+                      <button
+                        type="submit"
+                        disabled={!isBound}
+                        className={`w-full py-3.5 border font-sans font-bold uppercase rounded-xl text-xs tracking-wider transition-all shadow-md flex items-center justify-center gap-2 ${
+                          isBound
+                            ? 'bg-gradient-to-r from-emerald-500 to-teal-600 border-emerald-400 text-white cursor-pointer active:scale-[0.99] hover:from-emerald-600 hover:to-teal-700'
+                            : 'bg-slate-800/80 border-slate-700/60 text-slate-400 cursor-not-allowed opacity-70'
+                        }`}
+                      >
+                        <span>⚡ Authorize & Dispatch Liquidation Transfer</span>
+                        {!isBound && <span className="text-[10px] font-normal lowercase">(Address required)</span>}
+                      </button>
+                    );
+                  })()}
 
                 </form>
               </div>
@@ -5534,6 +5609,7 @@ ${activeViewDoc.project.description}`
                 onClick={() => {
                   setQuickActionsOpen(false);
                   setActiveTab('wallet');
+                  setWalletSubTab('deposit');
                   setTimeout(() => {
                     document.getElementById('binance-deposit-module')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
                   }, 120);
@@ -5554,6 +5630,7 @@ ${activeViewDoc.project.description}`
                 onClick={() => {
                   setQuickActionsOpen(false);
                   setActiveTab('wallet');
+                  setWalletSubTab('withdraw');
                   setTimeout(() => {
                     document.getElementById('binance-withdrawal-module')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
                   }, 120);
@@ -5838,59 +5915,61 @@ ${activeViewDoc.project.description}`
 
       {/* Deposit Confirmation Success Popup Modal */}
       {showDepositConfirmModal && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-[#0e112d] border border-emerald-500/40 rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl relative text-white space-y-5 animate-scaleIn overflow-hidden">
+        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-[#0e112d] border border-emerald-500/40 rounded-2xl sm:rounded-3xl p-4 sm:p-6 max-w-sm sm:max-w-md w-full max-h-[90vh] overflow-y-auto my-auto shadow-2xl relative text-white space-y-3.5 sm:space-y-5 animate-scaleIn scrollbar-thin scrollbar-thumb-slate-800">
             
             {/* Background Glow */}
-            <div className="absolute -top-12 -right-12 w-40 h-40 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none"></div>
+            <div className="absolute -top-12 -right-12 w-32 h-32 sm:w-40 sm:h-40 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none"></div>
 
             {/* Top Close Button */}
             <button
               type="button"
+              id="close-deposit-modal-x"
               onClick={() => setShowDepositConfirmModal(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 p-2 rounded-full transition-all cursor-pointer"
+              className="absolute top-3 right-3 sm:top-4 sm:right-4 z-20 text-slate-400 hover:text-white bg-slate-900/80 hover:bg-slate-800 p-1.5 sm:p-2 rounded-full border border-slate-700/50 transition-all cursor-pointer"
+              title="Close modal"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
 
             {/* Header Icon & Title */}
-            <div className="flex flex-col items-center text-center space-y-2 pt-2">
-              <div className="w-16 h-16 bg-emerald-500/20 border-2 border-emerald-400 rounded-full flex items-center justify-center text-emerald-400 shadow-lg shadow-emerald-500/20">
-                <CheckCircle2 className="w-10 h-10" />
+            <div className="flex flex-col items-center text-center space-y-1.5 sm:space-y-2 pt-1 sm:pt-2">
+              <div className="w-12 h-12 sm:w-16 sm:h-16 bg-emerald-500/20 border-2 border-emerald-400 rounded-full flex items-center justify-center text-emerald-400 shadow-lg shadow-emerald-500/20 shrink-0">
+                <CheckCircle2 className="w-7 h-7 sm:w-10 sm:h-10" />
               </div>
-              <h3 className="text-xl font-extrabold text-white tracking-wide font-sans">
+              <h3 className="text-base sm:text-xl font-extrabold text-white tracking-wide font-sans">
                 Deposit Request Submitted!
               </h3>
-              <p className="text-xs text-indigo-200/90 leading-relaxed max-w-xs font-sans">
+              <p className="text-[11px] sm:text-xs text-indigo-200/90 leading-relaxed max-w-xs font-sans">
                 Your deposit request has been logged successfully and is currently under review by our audit team.
               </p>
             </div>
 
             {/* Request Summary Details Card */}
             {submittedDepositData && (
-              <div className="bg-[#060819] border border-indigo-500/25 rounded-2xl p-4 space-y-3 text-xs font-sans">
-                <div className="flex justify-between items-center border-b border-indigo-500/15 pb-2.5">
-                  <span className="text-indigo-300 font-semibold text-[11px]">Deposit Amount:</span>
-                  <span className="text-emerald-400 font-black text-sm font-mono">${submittedDepositData.amount.toFixed(2)} USDT</span>
+              <div className="bg-[#060819] border border-indigo-500/25 rounded-xl sm:rounded-2xl p-3 sm:p-4 space-y-2.5 text-[11px] sm:text-xs font-sans">
+                <div className="flex justify-between items-center border-b border-indigo-500/15 pb-2">
+                  <span className="text-indigo-300 font-semibold text-[10px] sm:text-[11px]">Deposit Amount:</span>
+                  <span className="text-emerald-400 font-black text-xs sm:text-sm font-mono">${submittedDepositData.amount.toFixed(2)} USDT</span>
                 </div>
 
-                <div className="flex justify-between items-center border-b border-indigo-500/15 pb-2.5">
-                  <span className="text-indigo-300 font-semibold text-[11px]">Network Chain:</span>
-                  <span className="text-white font-bold font-mono bg-indigo-500/20 border border-indigo-500/30 px-2 py-0.5 rounded text-[10px]">
+                <div className="flex justify-between items-center border-b border-indigo-500/15 pb-2">
+                  <span className="text-indigo-300 font-semibold text-[10px] sm:text-[11px]">Network Chain:</span>
+                  <span className="text-white font-bold font-mono bg-indigo-500/20 border border-indigo-500/30 px-1.5 sm:px-2 py-0.5 rounded text-[9px] sm:text-[10px]">
                     USDT ({submittedDepositData.network})
                   </span>
                 </div>
 
                 <div className="flex justify-between items-start pt-0.5 gap-2">
-                  <span className="text-indigo-300 font-semibold text-[11px] shrink-0">Transaction TxID:</span>
-                  <span className="text-slate-200 font-mono text-[10px] break-all text-right select-all">
+                  <span className="text-indigo-300 font-semibold text-[10px] sm:text-[11px] shrink-0">Transaction TxID:</span>
+                  <span className="text-slate-200 font-mono text-[9px] sm:text-[10px] break-all text-right select-all bg-slate-950/70 px-2 py-1 rounded border border-indigo-500/10 max-w-[170px] sm:max-w-[220px]">
                     {submittedDepositData.txHash}
                   </span>
                 </div>
 
-                <div className="flex justify-between items-center border-t border-indigo-500/15 pt-2.5">
-                  <span className="text-indigo-300 font-semibold text-[11px]">Audit Status:</span>
-                  <span className="text-amber-400 font-extrabold text-[10px] uppercase bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded flex items-center gap-1">
+                <div className="flex justify-between items-center border-t border-indigo-500/15 pt-2">
+                  <span className="text-indigo-300 font-semibold text-[10px] sm:text-[11px]">Audit Status:</span>
+                  <span className="text-amber-400 font-extrabold text-[9px] sm:text-[10px] uppercase bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded flex items-center gap-1">
                     <Clock className="w-3 h-3 animate-spin" /> Pending Approval
                   </span>
                 </div>
@@ -5898,11 +5977,101 @@ ${activeViewDoc.project.description}`
             )}
 
             {/* Footer Action Button */}
-            <div className="pt-1">
+            <div className="pt-0.5">
               <button
                 type="button"
+                id="close-deposit-modal-btn"
                 onClick={() => setShowDepositConfirmModal(false)}
-                className="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold rounded-xl text-xs uppercase tracking-wider transition-all duration-200 cursor-pointer shadow-lg shadow-emerald-500/20 active:scale-[0.98]"
+                className="w-full py-2.5 sm:py-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold rounded-xl text-xs uppercase tracking-wider transition-all duration-200 cursor-pointer shadow-lg shadow-emerald-500/20 active:scale-[0.98]"
+              >
+                Close Confirmation
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Withdrawal Confirmation Success Popup Modal - Ultra Mobile Smart Preview */}
+      {showWithdrawConfirmModal && (
+        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-[#0e112d] border border-emerald-500/40 rounded-2xl sm:rounded-3xl p-4 sm:p-6 max-w-sm sm:max-w-md w-full max-h-[90vh] overflow-y-auto my-auto shadow-2xl relative text-white space-y-3.5 sm:space-y-5 animate-scaleIn scrollbar-thin scrollbar-thumb-slate-800">
+            
+            {/* Background Glow */}
+            <div className="absolute -top-12 -right-12 w-32 h-32 sm:w-40 sm:h-40 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none"></div>
+
+            {/* Top Close Button */}
+            <button
+              type="button"
+              id="close-withdrawal-modal-x"
+              onClick={() => setShowWithdrawConfirmModal(false)}
+              className="absolute top-3 right-3 sm:top-4 sm:right-4 z-20 text-slate-400 hover:text-white bg-slate-900/80 hover:bg-slate-800 p-1.5 sm:p-2 rounded-full border border-slate-700/50 transition-all cursor-pointer"
+              title="Close modal"
+            >
+              <X className="w-4 h-4 sm:w-5 sm:h-5" />
+            </button>
+
+            {/* Header Icon & Title */}
+            <div className="flex flex-col items-center text-center space-y-1.5 sm:space-y-2 pt-1 sm:pt-2">
+              <div className="w-12 h-12 sm:w-16 sm:h-16 bg-emerald-500/20 border-2 border-emerald-400 rounded-full flex items-center justify-center text-emerald-400 shadow-lg shadow-emerald-500/20 shrink-0">
+                <CheckCircle2 className="w-7 h-7 sm:w-10 sm:h-10" />
+              </div>
+              <h3 className="text-base sm:text-xl font-extrabold text-white tracking-wide font-sans">
+                Withdrawal Request Submitted!
+              </h3>
+              <p className="text-[11px] sm:text-xs text-indigo-200/90 leading-relaxed max-w-xs font-sans">
+                Your withdrawal request has been logged successfully and is currently queued for administrative audit and dispatch.
+              </p>
+            </div>
+
+            {/* Request Summary Details Card */}
+            {submittedWithdrawalData && (
+              <div className="bg-[#060819] border border-indigo-500/25 rounded-xl sm:rounded-2xl p-3 sm:p-4 space-y-2.5 text-[11px] sm:text-xs font-sans">
+                <div className="flex justify-between items-center border-b border-indigo-500/15 pb-2">
+                  <span className="text-indigo-300 font-semibold text-[10px] sm:text-[11px]">Requested Amount:</span>
+                  <span className="text-white font-black text-xs sm:text-sm font-mono">${submittedWithdrawalData.amount.toFixed(2)} USDT</span>
+                </div>
+
+                <div className="flex justify-between items-center border-b border-indigo-500/15 pb-2">
+                  <span className="text-rose-300 font-semibold text-[10px] sm:text-[11px]">Platform Fee (20%):</span>
+                  <span className="text-rose-400 font-bold font-mono text-xs">-${submittedWithdrawalData.fee.toFixed(2)} USDT</span>
+                </div>
+
+                <div className="flex justify-between items-center border-b border-indigo-500/15 pb-2 bg-emerald-500/10 -mx-3 sm:-mx-4 px-3 sm:px-4 py-1.5 sm:py-2 my-0">
+                  <span className="text-emerald-300 font-bold text-[11px] sm:text-[12px]">Net Payout Value:</span>
+                  <span className="text-emerald-400 font-black text-sm sm:text-base font-mono">${submittedWithdrawalData.net.toFixed(2)} USDT</span>
+                </div>
+
+                <div className="flex justify-between items-center border-b border-indigo-500/15 pb-2">
+                  <span className="text-indigo-300 font-semibold text-[10px] sm:text-[11px]">Network Chain:</span>
+                  <span className="text-white font-bold font-mono bg-indigo-500/20 border border-indigo-500/30 px-1.5 sm:px-2 py-0.5 rounded text-[9px] sm:text-[10px]">
+                    USDT ({submittedWithdrawalData.network})
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-start pt-0.5 gap-2">
+                  <span className="text-indigo-300 font-semibold text-[10px] sm:text-[11px] shrink-0">Destination Wallet:</span>
+                  <span className="text-slate-200 font-mono text-[9px] sm:text-[10px] break-all text-right select-all bg-slate-950/70 px-2 py-1 rounded border border-indigo-500/10 max-w-[160px] sm:max-w-[210px]">
+                    {submittedWithdrawalData.address}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center border-t border-indigo-500/15 pt-2">
+                  <span className="text-indigo-300 font-semibold text-[10px] sm:text-[11px]">Audit Status:</span>
+                  <span className="text-amber-400 font-extrabold text-[9px] sm:text-[10px] uppercase bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded flex items-center gap-1">
+                    <Clock className="w-3 h-3 animate-spin" /> Pending Approval
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Footer Action Button */}
+            <div className="pt-0.5">
+              <button
+                type="button"
+                id="close-withdrawal-modal-btn"
+                onClick={() => setShowWithdrawConfirmModal(false)}
+                className="w-full py-2.5 sm:py-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold rounded-xl text-xs uppercase tracking-wider transition-all duration-200 cursor-pointer shadow-lg shadow-emerald-500/20 active:scale-[0.98]"
               >
                 Close Confirmation
               </button>

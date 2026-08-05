@@ -8,7 +8,7 @@ import { RealEstateProject, Transaction, UserAccount, SecurityLog, ProjectCatego
 import { 
   Shield, Users, Landmark, Coins, FileText, Check, X, ShieldAlert,
   ArrowDownCircle, ArrowUpCircle, Plus, Eye, RefreshCw, Key, AlertOctagon, BarChart2,
-  Unlock, Minus, Wallet, User, Lock, Mail, MessageSquare, CheckCircle, XCircle, Download, Ban, CheckCircle2, Power, Trash2
+  Unlock, Minus, Wallet, User, Lock, Mail, MessageSquare, CheckCircle, XCircle, Download, Ban, CheckCircle2, Power, Trash2, Copy
 } from 'lucide-react';
 
 interface AdminPanelProps {
@@ -28,6 +28,7 @@ interface AdminPanelProps {
   onUpdateProjectRoi?: (projectId: string, newRoi: number) => void;
   onAdjustUserFunds?: (userId: string, amount: number, type: 'add' | 'deduct') => void;
   onUnbindUserWallet?: (userId: string, network: 'TRC20' | 'BEP20' | 'both') => void;
+  onRejectUnbindUserWallet?: (userId: string, network: 'TRC20' | 'BEP20' | 'both') => void;
   onUpdateProject?: (updatedProject: RealEstateProject) => void;
   onDeleteProject?: (projectId: string) => void;
   onUpdateInquiry?: (inquiry: Inquiry) => void;
@@ -55,6 +56,7 @@ export default function AdminPanel({
   onUpdateProjectRoi,
   onAdjustUserFunds,
   onUnbindUserWallet,
+  onRejectUnbindUserWallet,
   onUpdateProject,
   onDeleteProject,
   onUpdateInquiry,
@@ -75,6 +77,7 @@ export default function AdminPanel({
   currentUser
 }: AdminPanelProps) {
   const [localAdminTab, setLocalAdminTab] = useState<'stats' | 'deposits' | 'withdrawals' | 'projects' | 'users' | 'security' | 'settings' | 'inquiries'>('stats');
+  const [copiedWalletTxId, setCopiedWalletTxId] = useState<string | null>(null);
 
   const adminTab = activeAdminTab !== undefined ? activeAdminTab : localAdminTab;
   const setAdminTab = setActiveAdminTab !== undefined ? (setActiveAdminTab as any) : setLocalAdminTab;
@@ -724,66 +727,102 @@ export default function AdminPanel({
               </div>
             ) : (
               <div className="space-y-4">
-                {pendingWithdrawals.map((tx) => (
-                  <div 
-                    key={tx.id}
-                    className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3 relative overflow-hidden"
-                  >
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-rose-500/5 rounded-full blur-xl pointer-events-none"></div>
+                {pendingWithdrawals.map((tx) => {
+                  const feeVal = tx.feeAmount !== undefined ? tx.feeAmount : Math.round((tx.amount * 0.20) * 100) / 100;
+                  const netVal = tx.netAmount !== undefined ? tx.netAmount : Math.max(0, tx.amount - feeVal);
 
-                    {/* Meta info */}
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-0.5 font-mono">
-                        <span className="text-slate-500 text-[8px] uppercase block">Investor Account</span>
-                        <span className="text-xs font-bold text-white font-sans">{tx.userEmail}</span>
-                        <span className="text-[9px] text-rose-400">{tx.date}</span>
+                  return (
+                    <div 
+                      key={tx.id}
+                      className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3 relative overflow-hidden"
+                    >
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-rose-500/5 rounded-full blur-xl pointer-events-none"></div>
+
+                      {/* Meta info */}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-0.5 font-mono">
+                          <span className="text-slate-500 text-[8px] uppercase block font-bold">Investor Account</span>
+                          <span className="text-xs font-bold text-white font-sans">{tx.userEmail}</span>
+                          <span className="text-[9px] text-rose-400 block">{tx.date}</span>
+                        </div>
+                        <div className="text-right font-mono">
+                          <span className="text-slate-400 text-[8px] uppercase block font-bold">Target Payout (20% Deduction)</span>
+                          <span className="text-base font-black text-emerald-400">${netVal.toFixed(2)} USDT</span>
+                          <span className="text-[9px] text-slate-400 block font-sans">
+                            Gross: ${tx.amount.toFixed(2)} | Fee (20%): -${feeVal.toFixed(2)}
+                          </span>
+                        </div>
                       </div>
-                      <div className="text-right font-mono">
-                        <span className="text-slate-500 text-[8px] uppercase block">Target Withdrawal</span>
-                        <span className="text-base font-black text-rose-400">${tx.amount.toFixed(2)} USDT</span>
+
+                      {/* Destination Address details with Copy button */}
+                      <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-850 font-mono text-[10px] space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[8px] text-slate-500 uppercase block font-bold">Cryptographic payout wallet</span>
+                          <span className="px-1.5 py-0.5 bg-slate-900 border border-slate-800 text-amber-400 rounded text-[9px] font-bold shrink-0">
+                            {tx.network} Grid
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2 pt-0.5">
+                          <span className="text-slate-200 truncate font-semibold min-w-0 flex-1 select-all font-mono text-[11px] bg-slate-900 px-2 py-1 rounded border border-slate-800">
+                            {tx.walletAddress || 'No address provided'}
+                          </span>
+                          {tx.walletAddress && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(tx.walletAddress!);
+                                setCopiedWalletTxId(tx.id);
+                                setTimeout(() => setCopiedWalletTxId(null), 2000);
+                              }}
+                              className="px-2.5 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:border-emerald-500/50 rounded text-[10px] font-bold flex items-center gap-1 shrink-0 transition-all active:scale-95"
+                              title="Copy Wallet Address"
+                            >
+                              {copiedWalletTxId === tx.id ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                  <span className="text-emerald-400 font-bold">Copied!</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3.5 h-3.5 text-emerald-400" />
+                                  <span>Copy Address</span>
+                                </>
+                              )}
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
 
-                    {/* Destination Address details */}
-                    <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-850 font-mono text-[10px] space-y-1">
-                      <span className="text-[8px] text-slate-500 uppercase block font-bold">Cryptographic payout wallet</span>
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-slate-300 truncate font-semibold min-w-0 flex-1">{tx.walletAddress}</span>
-                        <span className="px-1.5 py-0.5 bg-slate-900 border border-slate-800 text-amber-400 rounded text-[9px] font-bold shrink-0">
-                          {tx.network} Grid
-                        </span>
+                      {/* Actions */}
+                      <div className="flex items-center space-x-3 pt-2">
+                        <button
+                          id={`approve-withdrawal-${tx.id}`}
+                          onClick={() => {
+                            onApproveTransaction(tx.id);
+                            alert(`Withdrawal payout of $${netVal.toFixed(2)} USDT (Gross: $${tx.amount.toFixed(2)} USDT) authorized! Dispatched on standard gas loop.`);
+                          }}
+                          className="flex-1 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-extrabold uppercase rounded-lg text-[10px] tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-md"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Approve & Authorize Dispatch (${netVal.toFixed(2)} USDT)</span>
+                        </button>
+                        
+                        <button
+                          id={`reject-withdrawal-${tx.id}`}
+                          onClick={() => {
+                            onRejectTransaction(tx.id);
+                            alert(`Refunded withdrawal of $${tx.amount} USDT to ${tx.userEmail}.`);
+                          }}
+                          className="px-4 py-2 bg-red-950/40 border border-red-500/30 hover:bg-red-900/20 text-red-300 font-extrabold uppercase rounded-lg text-[10px] tracking-wider flex items-center justify-center gap-1 transition-all"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          <span>Decline</span>
+                        </button>
                       </div>
-                    </div>
 
-                    {/* Actions */}
-                    <div className="flex items-center space-x-3 pt-2">
-                      <button
-                        id={`approve-withdrawal-${tx.id}`}
-                        onClick={() => {
-                          onApproveTransaction(tx.id);
-                          alert(`Withdrawal of $${tx.amount} USDT authorized. Dispatched on standard gas loop!`);
-                        }}
-                        className="flex-1 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-extrabold uppercase rounded-lg text-[10px] tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-md"
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                        <span>Approve & Authorize Dispatch</span>
-                      </button>
-                      
-                      <button
-                        id={`reject-withdrawal-${tx.id}`}
-                        onClick={() => {
-                          onRejectTransaction(tx.id);
-                          alert(`Refunded withdrawal of $${tx.amount} USDT to ${tx.userEmail}.`);
-                        }}
-                        className="px-4 py-2 bg-red-950/40 border border-red-500/30 hover:bg-red-900/20 text-red-300 font-extrabold uppercase rounded-lg text-[10px] tracking-wider flex items-center justify-center gap-1 transition-all"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                        <span>Decline</span>
-                      </button>
                     </div>
-
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
@@ -1817,10 +1856,47 @@ export default function AdminPanel({
 
                   <div className="space-y-2.5">
                     {/* TRC20 Wallet */}
-                    <div className="p-3 bg-slate-900 border border-slate-850 rounded-xl space-y-1.5">
+                    <div className={`p-3 bg-slate-900 border rounded-xl space-y-2 ${
+                      usr.wallet?.trc20UnbindPending ? 'border-amber-500/50 bg-amber-500/5' : 'border-slate-850'
+                    }`}>
+                      {usr.wallet?.trc20UnbindPending && (
+                        <div className="p-2 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-center justify-between gap-2 text-[10px] text-amber-300 font-mono font-bold">
+                          <span className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+                            ⚠️ UNBIND REQUESTED (TRC20)
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (onUnbindUserWallet) {
+                                  onUnbindUserWallet(usr.id, 'TRC20');
+                                  alert(`Approved TRC20 unbind request for ${usr.email}. Address reset.`);
+                                }
+                              }}
+                              className="px-2 py-0.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded text-[9px] uppercase font-bold cursor-pointer"
+                            >
+                              ✅ Approve
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (onRejectUnbindUserWallet) {
+                                  onRejectUnbindUserWallet(usr.id, 'TRC20');
+                                  alert(`Rejected TRC20 unbind request for ${usr.email}.`);
+                                }
+                              }}
+                              className="px-2 py-0.5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 rounded text-[9px] uppercase font-bold cursor-pointer"
+                            >
+                              ❌ Reject
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
                       <div className="flex justify-between items-center">
                         <span className="text-[9px] uppercase font-mono font-bold text-slate-400 block">USDT (TRC20 Network)</span>
-                        {usr.wallet?.usdtTrc20Address && (
+                        {usr.wallet?.usdtTrc20Address && !usr.wallet?.trc20UnbindPending && (
                           <button
                             id={`unbind-trc-${usr.id}`}
                             onClick={() => {
@@ -1831,7 +1907,7 @@ export default function AdminPanel({
                             }}
                             className="text-red-400 hover:text-red-300 text-[9px] font-bold uppercase tracking-wider cursor-pointer"
                           >
-                            🔓 Unbind TRC20
+                            🔓 Manual Unbind
                           </button>
                         )}
                       </div>
@@ -1866,10 +1942,47 @@ export default function AdminPanel({
                     </div>
 
                     {/* BEP20 Wallet */}
-                    <div className="p-3 bg-slate-900 border border-slate-850 rounded-xl space-y-1.5">
+                    <div className={`p-3 bg-slate-900 border rounded-xl space-y-2 ${
+                      usr.wallet?.bep20UnbindPending ? 'border-amber-500/50 bg-amber-500/5' : 'border-slate-850'
+                    }`}>
+                      {usr.wallet?.bep20UnbindPending && (
+                        <div className="p-2 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-center justify-between gap-2 text-[10px] text-amber-300 font-mono font-bold">
+                          <span className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+                            ⚠️ UNBIND REQUESTED (BEP20)
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (onUnbindUserWallet) {
+                                  onUnbindUserWallet(usr.id, 'BEP20');
+                                  alert(`Approved BEP20 unbind request for ${usr.email}. Address reset.`);
+                                }
+                              }}
+                              className="px-2 py-0.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded text-[9px] uppercase font-bold cursor-pointer"
+                            >
+                              ✅ Approve
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (onRejectUnbindUserWallet) {
+                                  onRejectUnbindUserWallet(usr.id, 'BEP20');
+                                  alert(`Rejected BEP20 unbind request for ${usr.email}.`);
+                                }
+                              }}
+                              className="px-2 py-0.5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 rounded text-[9px] uppercase font-bold cursor-pointer"
+                            >
+                              ❌ Reject
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
                       <div className="flex justify-between items-center">
                         <span className="text-[9px] uppercase font-mono font-bold text-slate-400 block">USDT (BEP20 Network)</span>
-                        {usr.wallet?.usdtBep20Address && (
+                        {usr.wallet?.usdtBep20Address && !usr.wallet?.bep20UnbindPending && (
                           <button
                             id={`unbind-bep-${usr.id}`}
                             onClick={() => {
@@ -1880,7 +1993,7 @@ export default function AdminPanel({
                             }}
                             className="text-red-400 hover:text-red-300 text-[9px] font-bold uppercase tracking-wider cursor-pointer"
                           >
-                            🔓 Unbind BEP20
+                            🔓 Manual Unbind
                           </button>
                         )}
                       </div>
