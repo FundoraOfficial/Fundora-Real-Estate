@@ -861,6 +861,62 @@ export default function App() {
     }
   }, [activeUser?.id, activeUser?.email]);
 
+  // Real-time Push Notification alerts for Deposit, Withdrawal & KYC updates in Mobile Notification Bar
+  const prevTxStatusMapRef = useRef<Record<string, string>>({});
+  const prevKycStatusRef = useRef<boolean | undefined>(undefined);
+
+  useEffect(() => {
+    if (!activeUser) return;
+
+    // 1. Monitor KYC Verification Status changes
+    if (prevKycStatusRef.current !== undefined && prevKycStatusRef.current !== activeUser.isKycVerified) {
+      if (activeUser.isKycVerified) {
+        notifyKycUpdate('verified', activeUser.email);
+      } else if (activeUser.kycSubmitted === false) {
+        notifyKycUpdate('rejected', activeUser.email);
+      }
+    }
+    prevKycStatusRef.current = activeUser.isKycVerified;
+
+    // 2. Monitor Deposit and Withdrawal status changes
+    const userTxs = transactionsList.filter(
+      t => t.userId === activeUser.id || (t.userEmail && t.userEmail.toLowerCase() === activeUser.email.toLowerCase())
+    );
+
+    const currentMap: Record<string, string> = {};
+    userTxs.forEach(tx => {
+      currentMap[tx.id] = tx.status;
+      const prevStatus = prevTxStatusMapRef.current[tx.id];
+
+      // If transaction status changed!
+      if (prevStatus && prevStatus !== tx.status) {
+        const typeLower = (tx.type || '').toLowerCase();
+        const statusLower = (tx.status || '').toLowerCase();
+
+        const isDeposit = typeLower.includes('deposit');
+        const isWithdrawal = typeLower.includes('withdraw');
+        const isApproved = statusLower === 'completed' || statusLower === 'approved';
+        const isRejected = statusLower === 'rejected';
+
+        if (isDeposit) {
+          if (isApproved) {
+            notifyDepositUpdate(tx.amount, 'approved', tx.id, activeUser.email);
+          } else if (isRejected) {
+            notifyDepositUpdate(tx.amount, 'rejected', tx.id, activeUser.email);
+          }
+        } else if (isWithdrawal) {
+          if (isApproved) {
+            notifyWithdrawalUpdate(tx.amount, 'approved', tx.id, activeUser.email);
+          } else if (isRejected) {
+            notifyWithdrawalUpdate(tx.amount, 'rejected', tx.id, activeUser.email);
+          }
+        }
+      }
+    });
+
+    prevTxStatusMapRef.current = currentMap;
+  }, [transactionsList, activeUser?.isKycVerified, activeUser?.kycSubmitted, activeUser?.id, activeUser?.email]);
+
 
 
   // Clean up and migrate old Pakistani/South Asian cached values to UAE and UK defaults on startup
