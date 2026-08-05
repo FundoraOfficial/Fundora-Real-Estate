@@ -2,12 +2,54 @@ import express from "express";
 import path from "path";
 import dotenv from "dotenv";
 import nodemailer from "nodemailer";
+import { initializeApp, cert, getApps, App } from "firebase-admin/app";
+import { getMessaging, TokenMessage, TopicMessage } from "firebase-admin/messaging";
 import { GoogleGenAI, Type } from "@google/genai";
 import { Readable } from "stream";
 import { generateSmartFundoraAnswer, searchStructuredFAQ } from "./src/lib/aiKnowledgeEngine";
 
 // Load environment variables from .env
 dotenv.config();
+
+// Initialize Firebase Admin SDK
+let firebaseAdminApp: App | null = null;
+
+function initFirebaseAdmin(): App | null {
+  if (firebaseAdminApp) return firebaseAdminApp;
+  const activeApps = getApps();
+  if (activeApps.length > 0 && activeApps[0]) {
+    firebaseAdminApp = activeApps[0];
+    return firebaseAdminApp;
+  }
+
+  try {
+    const rawServiceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_JSON || process.env.FIREBASE_SERVICE_ACCOUNT;
+    if (rawServiceAccount) {
+      let parsedCreds: any;
+      const trimmed = rawServiceAccount.trim();
+      if (trimmed.startsWith("{")) {
+        parsedCreds = JSON.parse(trimmed);
+      } else {
+        try {
+          const decoded = Buffer.from(trimmed, 'base64').toString('utf8');
+          parsedCreds = JSON.parse(decoded);
+        } catch {
+          parsedCreds = JSON.parse(trimmed);
+        }
+      }
+
+      firebaseAdminApp = initializeApp({
+        credential: cert(parsedCreds)
+      });
+      console.log("[Firebase Admin] Successfully initialized Firebase Admin SDK with Service Account JSON credentials.");
+      return firebaseAdminApp;
+    }
+  } catch (err: any) {
+    console.warn("[Firebase Admin] Initialization attempt warning:", err?.message || err);
+  }
+
+  return null;
+}
 
 async function startServer() {
   const app = express();
@@ -953,7 +995,7 @@ Respond clearly using rich formatting (bolding key terms).`;
     }
   });
 
-  // API Endpoint: FCM Production Push Notification Gateway
+  // API Endpoint: FCM Production Push Notification Gateway using Official Firebase Admin SDK
   app.post("/api/notifications/send-fcm", async (req, res) => {
     const { userEmail, userId, title, body, type, route, channelId, extraData, targetToken } = req.body;
 
@@ -964,10 +1006,87 @@ Respond clearly using rich formatting (bolding key terms).`;
     try {
       console.log(`[FCM Backend Gateway] Push Notification request received for "${userEmail || userId || 'direct_token'}": "${title}" - "${body}"`);
 
-      const fcmKey = process.env.FCM_SERVER_KEY || process.env.FIREBASE_MESSAGING_KEY || "";
-      const projectId = process.env.FIREBASE_PROJECT_ID || "gen-lang-client-0327121259";
+      const adminApp = initFirebaseAdmin();
 
-      // If explicit FCM legacy/HTTP v1 server key exists, dispatch direct FCM HTTP payload
+      if (adminApp) {
+        const notificationTitle = title || "Fundora Notification";
+        const notificationBody = body || "";
+        const targetChannel = channelId || "fundora_notifications";
+
+        const messageData: Record<string, string> = {
+          title: String(notificationTitle),
+          body: String(notificationBody),
+          type: String(type || "system"),
+          route: String(route || "#/overview"),
+          timestamp: new Date().toISOString()
+        };
+
+        if (extraData && typeof extraData === "object") {
+          for (const [key, val] of Object.entries(extraData)) {
+            messageData[key] = String(val);
+          }
+        }
+
+        // Send via direct device FCM Token if available
+        if (targetToken) {
+          try {
+            const tokenMsg: TokenMessage = {
+              token: targetToken,
+              notification: {
+                title: notificationTitle,
+                body: notificationBody
+              },
+              data: messageData,
+              android: {
+                priority: "high",
+                notification: {
+                  sound: "default",
+                  channelId: targetChannel,
+                  clickAction: "FLUTTER_NOTIFICATION_CLICK"
+                }
+              }
+            };
+
+            const response = await getMessaging(adminApp).send(tokenMsg);
+            console.log(`[FCM Backend Gateway] Firebase Admin SDK successfully dispatched push notification to token: ${response}`);
+            return res.json({ success: true, via: "firebase_admin_sdk", target: "token", messageId: response });
+          } catch (tokenErr: any) {
+            console.warn(`[FCM Backend Gateway] Direct token dispatch warning: ${tokenErr?.message || tokenErr}`);
+          }
+        }
+
+        // Send via User Topic if email is provided
+        if (userEmail) {
+          try {
+            const topicName = `user_${userEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
+            const topicMsg: TopicMessage = {
+              topic: topicName,
+              notification: {
+                title: notificationTitle,
+                body: notificationBody
+              },
+              data: messageData,
+              android: {
+                priority: "high",
+                notification: {
+                  sound: "default",
+                  channelId: targetChannel,
+                  clickAction: "FLUTTER_NOTIFICATION_CLICK"
+                }
+              }
+            };
+
+            const response = await getMessaging(adminApp).send(topicMsg);
+            console.log(`[FCM Backend Gateway] Firebase Admin SDK successfully dispatched push notification to topic "${topicName}": ${response}`);
+            return res.json({ success: true, via: "firebase_admin_sdk", target: "topic", topicName, messageId: response });
+          } catch (topicErr: any) {
+            console.warn(`[FCM Backend Gateway] Topic message dispatch warning: ${topicErr?.message || topicErr}`);
+          }
+        }
+      }
+
+      // Legacy Server Key Fallback if Firebase Admin SDK is not initialized
+      const fcmKey = process.env.FCM_SERVER_KEY || process.env.FIREBASE_MESSAGING_KEY || "";
       if (fcmKey && (targetToken || userEmail)) {
         try {
           const fcmPayload = {
@@ -1001,11 +1120,11 @@ Respond clearly using rich formatting (bolding key terms).`;
 
           if (fcmRes.ok) {
             const fcmData = await fcmRes.json();
-            console.log(`[FCM Backend Gateway] FCM Server successfully dispatched push notification:`, fcmData);
-            return res.json({ success: true, via: "fcm_server_key", fcmData });
+            console.log(`[FCM Backend Gateway] Legacy FCM Server Key successfully dispatched push notification:`, fcmData);
+            return res.json({ success: true, via: "fcm_server_key_fallback", fcmData });
           }
         } catch (fcmErr: any) {
-          console.warn("[FCM Backend Gateway] FCM direct HTTP request error:", fcmErr?.message || fcmErr);
+          console.warn("[FCM Backend Gateway] FCM legacy direct HTTP request error:", fcmErr?.message || fcmErr);
         }
       }
 
@@ -1017,7 +1136,8 @@ Respond clearly using rich formatting (bolding key terms).`;
         title,
         body,
         type,
-        channelId: channelId || "fundora_notifications"
+        channelId: channelId || "fundora_notifications",
+        note: "Set FIREBASE_SERVICE_ACCOUNT_JSON environment variable to enable live Firebase Admin SDK push delivery."
       });
     } catch (err: any) {
       console.error("[FCM Backend Gateway Error]", err?.message || err);

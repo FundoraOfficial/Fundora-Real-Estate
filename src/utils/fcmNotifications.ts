@@ -242,9 +242,10 @@ export async function sendFcmEventNotification(params: {
     }
   }
 
-  // 2. Post to backend FCM push gateway endpoint
+  // 2. Post to backend FCM push gateway endpoint (Vercel Serverless or Cloud Run backend)
   try {
-    const backendUrl = typeof window !== 'undefined' ? `${window.location.origin}/api/notifications/send-fcm` : '/api/notifications/send-fcm';
+    const apiBase = import.meta.env.VITE_VERCEL_API_URL || import.meta.env.VITE_BACKEND_URL || (typeof window !== 'undefined' ? window.location.origin : '');
+    const backendUrl = `${apiBase.replace(/\/$/, '')}/api/notifications/send-fcm`;
     const response = await fetch(backendUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

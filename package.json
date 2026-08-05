@@ -34,6 +34,7 @@
     "esbuild": "^0.25.0",
     "express": "^4.21.2",
     "firebase": "^12.15.0",
+    "firebase-admin": "^14.2.0",
     "jspdf": "^4.2.1",
     "jsqr": "^1.4.0",
     "lucide-react": "^0.546.0",

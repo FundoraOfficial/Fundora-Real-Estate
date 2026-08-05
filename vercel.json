@@ -1,5 +1,6 @@
 {
   "rewrites": [
+    { "source": "/api/notifications/send-fcm", "destination": "/api/notifications/send-fcm" },
     { "source": "/api/analyze-receipt", "destination": "/api/analyze-receipt" },
     { "source": "/api/send-otp", "destination": "/api/send-otp" },
     { "source": "/api/health", "destination": "/api/health" },

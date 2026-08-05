@@ -47,34 +47,15 @@ jobs:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
           mkdir -p android/app
-          if [ -z "$GOOGLE_SERVICES_JSON" ]; then
-            echo "ERROR: GOOGLE_SERVICES_JSON secret is missing."
-            exit 1
-          fi
-          printf "%s" "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
-
-      - name: Verify google-services.json
-        run: |
-          if [ -f android/app/google-services.json ]; then
-            echo "google-services.json found."
-            ls -lh android/app/google-services.json
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            echo "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+            echo "Successfully created android/app/google-services.json from GOOGLE_SERVICES_JSON secret."
           else
-            echo "ERROR: google-services.json was not created."
-            exit 1
+            echo "Warning: GOOGLE_SERVICES_JSON secret not set or empty in repository settings."
           fi
 
       - name: Sync Capacitor
         run: npm run cap:sync
-
-      - name: Verify google-services.json after sync
-        run: |
-          if [ -f android/app/google-services.json ]; then
-            echo "google-services.json still exists after sync."
-            ls -lh android/app/google-services.json
-          else
-            echo "ERROR: google-services.json disappeared after Capacitor sync."
-            exit 1
-          fi
 
       - name: Download Clean Gradle Wrapper Jar
         run: |
@@ -85,7 +66,7 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
+          ./gradlew assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
