@@ -1726,7 +1726,7 @@ export default function AdminPanel({
                             type="button"
                             onClick={() => {
                               if (onUpdateUser) {
-                                onUpdateUser(usr.id, { kycStatus: 'Verified' });
+                                onUpdateUser(usr.id, { kycStatus: 'Verified', isKycVerified: true, kycSubmitted: true });
                                 alert(`KYC Status updated to Verified for ${usr.email}`);
                               }
                             }}
@@ -1739,7 +1739,7 @@ export default function AdminPanel({
                             type="button"
                             onClick={() => {
                               if (onUpdateUser) {
-                                onUpdateUser(usr.id, { kycStatus: 'Rejected' });
+                                onUpdateUser(usr.id, { kycStatus: 'Rejected', isKycVerified: false, kycSubmitted: false });
                                 alert(`KYC Status updated to Rejected for ${usr.email}`);
                               }
                             }}

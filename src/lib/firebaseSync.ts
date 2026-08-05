@@ -361,7 +361,12 @@ export const saveUserToFirebase = async (user: UserAccount) => {
     
     logFirestoreOp('WRITE', 'users', cleanUser.id, { email: cleanUser.email, role: cleanUser.role });
     
-    await setDoc(userDocRef, cleanUser);
+    const cachedFcmToken = typeof window !== 'undefined' ? (localStorage.getItem('fundora_device_push_token') || localStorage.getItem('fundora_fcm_token') || undefined) : undefined;
+    if (cachedFcmToken && !cleanUser.fcmToken) {
+      cleanUser.fcmToken = cachedFcmToken;
+    }
+
+    await setDoc(userDocRef, cleanUser, { merge: true });
     
     const duration = Date.now() - startTime;
     console.log(`${tag} [AFTER SUCCESSFUL setDoc] Document setDoc resolved successfully in ${duration}ms for cleanUser.id: "${cleanUser.id}", cleanUser.email: "${cleanUser.email}".`);

@@ -8,7 +8,7 @@ import { PushNotifications, Channel, PermissionStatus, PushNotificationSchema, A
 import { Capacitor } from '@capacitor/core';
 import { db } from '../lib/firebase';
 import { isFirebaseEnabled } from '../lib/firebaseSync';
-import { doc, getDoc, updateDoc, arrayUnion, setDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, arrayUnion, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { UserAccount, UserNotification } from '../types';
 
 export const FCM_CHANNEL_ID = 'fundora_notifications';
@@ -71,41 +71,69 @@ export async function saveFcmTokenToUser(token: string, userIdOrEmail?: string):
   // Try saving token to logged-in user in Firestore
   try {
     let targetUserId = userIdOrEmail;
-    if (!targetUserId) {
-      const storedUserRaw = localStorage.getItem('fundora_user') || localStorage.getItem('fundora_current_user');
-      if (storedUserRaw) {
-        try {
-          const parsed = JSON.parse(storedUserRaw);
-          targetUserId = parsed?.id || parsed?.email;
-        } catch (e) {}
+    if (!targetUserId && typeof window !== 'undefined') {
+      const keys = ['inv_active_user', 'fundora_user', 'inv_user', 'fundora_active_user', 'fundora_current_user'];
+      for (const key of keys) {
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            if (parsed?.id || parsed?.email) {
+              targetUserId = parsed.id || parsed.email;
+              break;
+            }
+          } catch (_) {}
+        }
       }
     }
 
     if (targetUserId && isFirebaseEnabled()) {
       const cleanTarget = targetUserId.trim().toLowerCase();
-      // Update by user id or clean email doc
-      const userRef = doc(db, 'users', targetUserId);
-      const docSnap = await getDoc(userRef);
+      const tokenPayload = {
+        fcmToken: token,
+        fcmTokens: arrayUnion(token),
+        lastTokenUpdate: new Date().toISOString()
+      };
 
-      if (docSnap.exists()) {
-        await updateDoc(userRef, {
-          fcmToken: token,
-          fcmTokens: arrayUnion(token),
-          lastTokenUpdate: new Date().toISOString()
-        });
-        console.log(`[FCM Native Engine] Successfully linked FCM token to user document "${targetUserId}" in Firestore.`);
-      } else {
-        // Search by email doc
+      // 1. Update by targetUserId doc directly
+      try {
+        const userRef = doc(db, 'users', targetUserId);
+        const docSnap = await getDoc(userRef);
+        if (docSnap.exists()) {
+          await updateDoc(userRef, tokenPayload);
+          console.log(`[FCM Native Engine] Successfully linked FCM token to user doc "${targetUserId}".`);
+        }
+      } catch (_) {}
+
+      // 2. Update by clean email doc directly
+      try {
         const emailRef = doc(db, 'users', cleanTarget);
         const emailSnap = await getDoc(emailRef);
         if (emailSnap.exists()) {
-          await updateDoc(emailRef, {
-            fcmToken: token,
-            fcmTokens: arrayUnion(token),
-            lastTokenUpdate: new Date().toISOString()
-          });
-          console.log(`[FCM Native Engine] Linked FCM token to user email document "${cleanTarget}".`);
+          await updateDoc(emailRef, tokenPayload);
+          console.log(`[FCM Native Engine] Linked FCM token to user email doc "${cleanTarget}".`);
         }
+      } catch (_) {}
+
+      // 3. Query collection where email == cleanTarget or id == targetUserId and update matching docs
+      try {
+        const usersCol = collection(db, 'users');
+        const qEmail = query(usersCol, where('email', '==', cleanTarget));
+        const emailSnap = await getDocs(qEmail);
+        emailSnap.forEach(async (d) => {
+          await updateDoc(doc(db, 'users', d.id), tokenPayload);
+          console.log(`[FCM Native Engine] Linked FCM token to user doc ID "${d.id}" via email query.`);
+        });
+
+        if (targetUserId !== cleanTarget) {
+          const qId = query(usersCol, where('id', '==', targetUserId));
+          const idSnap = await getDocs(qId);
+          idSnap.forEach(async (d) => {
+            await updateDoc(doc(db, 'users', d.id), tokenPayload);
+          });
+        }
+      } catch (err) {
+        console.warn('[FCM Native Engine] Firestore query update warning:', err);
       }
     }
   } catch (err) {
@@ -187,6 +215,11 @@ export async function initFcmPushNotifications(currentUser?: UserAccount | null)
       if (permStatus.receive === 'granted') {
         console.log('[FCM Native Engine] Permission granted! Registering with FCM service...');
         await PushNotifications.register();
+
+        const storedToken = currentRegisteredToken || (typeof window !== 'undefined' ? localStorage.getItem('fundora_device_push_token') || localStorage.getItem('fundora_fcm_token') : null);
+        if (storedToken) {
+          await saveFcmTokenToUser(storedToken, currentUser?.id || currentUser?.email);
+        }
         return true;
       } else {
         console.warn('[FCM Native Engine] FCM Notification permission was denied by user.');
@@ -202,9 +235,7 @@ export async function initFcmPushNotifications(currentUser?: UserAccount | null)
       webToken = `WEB_FCM_${Date.now()}_${randStr}`;
       localStorage.setItem('fundora_fcm_token', webToken);
     }
-    if (currentUser) {
-      await saveFcmTokenToUser(webToken, currentUser.id || currentUser.email);
-    }
+    await saveFcmTokenToUser(webToken, currentUser?.id || currentUser?.email);
   }
 
   return false;
@@ -227,8 +258,21 @@ export async function sendFcmEventNotification(params: {
 
   console.log(`[FCM Event Dispatcher] Sending FCM Push Notification ("${title}") to ${userEmail}...`);
 
-  // Extract FCM push token from params, in-memory cache, or localStorage
-  const resolvedTargetToken = params.targetToken || currentRegisteredToken || (typeof window !== 'undefined' ? localStorage.getItem('fundora_device_push_token') || undefined : undefined);
+  // Extract FCM push token: use params.targetToken if explicitly provided.
+  // Only fall back to local device token if sending to the currently logged-in user on this device.
+  let resolvedTargetToken = params.targetToken;
+  if (!resolvedTargetToken && typeof window !== 'undefined') {
+    try {
+      const activeUserSaved = localStorage.getItem('inv_active_user');
+      const activeUserObj = activeUserSaved ? JSON.parse(activeUserSaved) : null;
+      const currentEmail = activeUserObj?.email ? activeUserObj.email.trim().toLowerCase() : null;
+      const targetEmailClean = userEmail ? userEmail.trim().toLowerCase() : null;
+
+      if (currentEmail && targetEmailClean && currentEmail === targetEmailClean) {
+        resolvedTargetToken = currentRegisteredToken || localStorage.getItem('fundora_device_push_token') || undefined;
+      }
+    } catch (_) {}
+  }
 
   // 1. Save notification to user's history in Firestore so it's reflected inside user account
   if (isFirebaseEnabled()) {
@@ -256,28 +300,35 @@ export async function sendFcmEventNotification(params: {
     const apiBase = import.meta.env.VITE_VERCEL_API_URL || import.meta.env.VITE_BACKEND_URL || vercelProdBase;
     const backendUrl = `${apiBase.replace(/\/$/, '')}/api/notifications/send-fcm`;
 
+    const payload = {
+      userEmail,
+      userId,
+      title,
+      body,
+      type,
+      route,
+      channelId: FCM_CHANNEL_ID,
+      extraData,
+      targetToken: resolvedTargetToken
+    };
+
+    console.log("[STEP 6] Sending POST to Vercel", payload);
     const response = await fetch(backendUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userEmail,
-        userId,
-        title,
-        body,
-        type,
-        route,
-        channelId: FCM_CHANNEL_ID,
-        extraData,
-        targetToken: resolvedTargetToken
-      })
+      body: JSON.stringify(payload)
     });
+    console.log("[STEP 7] Vercel response", response.status);
 
-    if (response.ok) {
-      const resData = await response.json();
+    const resData = await response.json().catch(() => ({}));
+    if (response.ok && resData.success !== false) {
       console.log(`[FCM Event Dispatcher] Backend dispatch result:`, resData);
       return true;
+    } else {
+      console.warn(`[FCM Event Dispatcher] Backend FCM dispatch returned error status or success=false:`, resData);
     }
   } catch (err) {
+    console.error("[STEP X] Fetch failed", err);
     console.warn('[FCM Event Dispatcher] Backend FCM API call failed:', err);
   }
 
@@ -327,6 +378,7 @@ export function triggerFcmWithdrawalSubmitted(email: string, amount: number | st
 }
 
 export function triggerFcmWithdrawalApproved(email: string, amount: number | string, txHash?: string) {
+  console.log("[STEP 5] triggerFcmWithdrawalApproved entered");
   return sendFcmEventNotification({
     userEmail: email,
     title: '🎉 Withdrawal Approved!',

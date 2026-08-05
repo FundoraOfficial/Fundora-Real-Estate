@@ -1290,6 +1290,7 @@ export default function App() {
 
   // Confirm Deposit / Withdrawals in the back-office compliance console
   const handleApproveTransaction = (txId: string) => {
+    console.log("[STEP 1] handleApproveTransaction entered");
     const matchedTx = transactionsList.find(t => t.id === txId);
     if (!matchedTx) return;
 
@@ -1303,19 +1304,25 @@ export default function App() {
     let extraTxs: Transaction[] = [];
 
     // Find the user who did the transaction
-    const userObj = usersListState.find(u => u.id === matchedTx.userId);
-    if (!userObj) return;
+    const userObj = usersListState.find(u => 
+      u.id === matchedTx.userId || 
+      (u.email && matchedTx.userEmail && u.email.trim().toLowerCase() === matchedTx.userEmail.trim().toLowerCase())
+    );
+
+    const targetEmail = matchedTx.userEmail || userObj?.email || '';
+    const targetName = userObj?.name || 'Investor';
 
     // Check approved deposits count
-    const approvedDepositsCount = transactionsList.filter(
-      t => t.userId === userObj.id && t.type === 'Deposit' && t.status === 'Approved'
-    ).length;
+    const approvedDepositsCount = userObj ? transactionsList.filter(
+      t => (t.userId === userObj.id || (t.userEmail && t.userEmail.trim().toLowerCase() === userObj.email.trim().toLowerCase())) && t.type === 'Deposit' && t.status === 'Approved'
+    ).length : 0;
 
     const isFirstDeposit = matchedTx.type === 'Deposit' && approvedDepositsCount === 0 && matchedTx.amount >= 113;
     const bonusAmount = isFirstDeposit ? Math.round((matchedTx.amount * 0.10) * 100) / 100 : 0;
 
     let updatedUsers = usersListState.map(u => {
-      if (u.id === matchedTx.userId) {
+      const isMatch = u.id === matchedTx.userId || (u.email && matchedTx.userEmail && u.email.trim().toLowerCase() === matchedTx.userEmail.trim().toLowerCase());
+      if (isMatch) {
         if (matchedTx.type === 'Deposit') {
           const finalBalance = Math.round((u.balance + matchedTx.amount + bonusAmount) * 100) / 100;
           const updatedU = {
@@ -1362,7 +1369,7 @@ export default function App() {
     });
 
     // If first deposit, also credit the referrer
-    if (isFirstDeposit && userObj.referredBy && bonusAmount > 0) {
+    if (isFirstDeposit && userObj?.referredBy && bonusAmount > 0) {
       const referralCodeClean = userObj.referredBy.trim().toUpperCase();
       const referrerUserIndex = updatedUsers.findIndex(u => u.referralCode.toUpperCase() === referralCodeClean);
       
@@ -1383,7 +1390,7 @@ export default function App() {
           amount: bonusAmount,
           date: new Date().toISOString().replace('T', ' ').slice(0, 16),
           status: 'Completed',
-          description: `🎁 10% Referral partner bonus on ${userObj.email}'s first qualifying deposit.`
+          description: `🎁 10% Referral partner bonus on ${targetEmail}'s first qualifying deposit.`
         };
         extraTxs.push(referrerTx);
         
@@ -1399,7 +1406,9 @@ export default function App() {
     setTransactionsList(prev => {
       const updatedList = prev.map(t => t.id === txId ? updatedTx : t);
       const combined = [...extraTxs, ...updatedList];
+      console.log("[STEP 2] Saving approved transaction");
       combined.forEach(tx => saveTransactionToFirebase(tx));
+      console.log("[STEP 3] Firestore updated");
       return combined;
     });
 
@@ -1410,20 +1419,23 @@ export default function App() {
 
     // Dispatch approval email & instant FCM Push Notification to investor
     try {
-      if (matchedTx.type === 'Deposit') {
-        sendDepositEmail(userObj.email, userObj.name, matchedTx.amount, matchedTx.network || 'TRC20', matchedTx.txHash || '', 'Approved').catch(e => console.warn('Deposit approve email error:', e));
-        triggerFcmDepositApproved(userObj.email, matchedTx.amount);
-      } else if (matchedTx.type === 'Withdrawal') {
-        sendWithdrawalEmail(userObj.email, userObj.name, matchedTx.amount, matchedTx.network || 'TRC20', matchedTx.walletAddress || '', 'Approved').catch(e => console.warn('Withdrawal approve email error:', e));
-        triggerFcmWithdrawalApproved(userObj.email, matchedTx.amount);
+      if (targetEmail) {
+        if (matchedTx.type === 'Deposit') {
+          sendDepositEmail(targetEmail, targetName, matchedTx.amount, matchedTx.network || 'TRC20', matchedTx.txHash || '', 'Approved').catch(e => console.warn('Deposit approve email error:', e));
+          triggerFcmDepositApproved(targetEmail, matchedTx.amount);
+        } else if (matchedTx.type === 'Withdrawal') {
+          sendWithdrawalEmail(targetEmail, targetName, matchedTx.amount, matchedTx.network || 'TRC20', matchedTx.walletAddress || '', 'Approved').catch(e => console.warn('Withdrawal approve email error:', e));
+          console.log("[STEP 4] Calling triggerFcmWithdrawalApproved");
+          triggerFcmWithdrawalApproved(targetEmail, matchedTx.amount);
+        }
       }
 
-      if (isFirstDeposit && bonusAmount > 0) {
-        triggerFcmReferralBonus(userObj.email, bonusAmount, 'First Deposit Welcome Bonus');
-        const referralCodeClean = userObj.referredBy?.trim().toUpperCase();
+      if (isFirstDeposit && bonusAmount > 0 && targetEmail) {
+        triggerFcmReferralBonus(targetEmail, bonusAmount, 'First Deposit Welcome Bonus');
+        const referralCodeClean = userObj?.referredBy?.trim().toUpperCase();
         const referrer = updatedUsers.find(u => u.referralCode.toUpperCase() === referralCodeClean);
         if (referrer) {
-          triggerFcmReferralBonus(referrer.email, bonusAmount, userObj.email);
+          triggerFcmReferralBonus(referrer.email, bonusAmount, targetEmail);
         }
       }
     } catch (e) {
@@ -1450,7 +1462,8 @@ export default function App() {
     // Refund withdrawals if rejected
     if (matchedTx.type === 'Withdrawal') {
       const updatedUsers = usersListState.map(u => {
-        if (u.id === matchedTx.userId) {
+        const isMatch = u.id === matchedTx.userId || (u.email && matchedTx.userEmail && u.email.trim().toLowerCase() === matchedTx.userEmail.trim().toLowerCase());
+        if (isMatch) {
           const updatedU = {
             ...u,
             balance: Math.round((u.balance + matchedTx.amount) * 100) / 100,
@@ -1468,15 +1481,21 @@ export default function App() {
     }
 
     // Dispatch rejection notification email & FCM push notification
-    const userObj = usersListState.find(u => u.id === matchedTx.userId);
-    if (userObj) {
+    const userObj = usersListState.find(u => 
+      u.id === matchedTx.userId || 
+      (u.email && matchedTx.userEmail && u.email.trim().toLowerCase() === matchedTx.userEmail.trim().toLowerCase())
+    );
+    const targetEmail = matchedTx.userEmail || userObj?.email || '';
+    const targetName = userObj?.name || 'Investor';
+
+    if (targetEmail) {
       try {
         if (matchedTx.type === 'Deposit') {
-          sendDepositEmail(userObj.email, userObj.name, matchedTx.amount, matchedTx.network || 'TRC20', matchedTx.txHash || '', 'Rejected').catch(e => console.warn('Deposit reject email error:', e));
-          triggerFcmDepositRejected(userObj.email, matchedTx.amount);
+          sendDepositEmail(targetEmail, targetName, matchedTx.amount, matchedTx.network || 'TRC20', matchedTx.txHash || '', 'Rejected').catch(e => console.warn('Deposit reject email error:', e));
+          triggerFcmDepositRejected(targetEmail, matchedTx.amount);
         } else if (matchedTx.type === 'Withdrawal') {
-          sendWithdrawalEmail(userObj.email, userObj.name, matchedTx.amount, matchedTx.network || 'TRC20', matchedTx.walletAddress || '', 'Rejected').catch(e => console.warn('Withdrawal reject email error:', e));
-          triggerFcmWithdrawalRejected(userObj.email, matchedTx.amount);
+          sendWithdrawalEmail(targetEmail, targetName, matchedTx.amount, matchedTx.network || 'TRC20', matchedTx.walletAddress || '', 'Rejected').catch(e => console.warn('Withdrawal reject email error:', e));
+          triggerFcmWithdrawalRejected(targetEmail, matchedTx.amount);
         }
       } catch (_) {}
     }

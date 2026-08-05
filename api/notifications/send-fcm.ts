@@ -99,23 +99,28 @@ export default async function handler(req: any, res: any) {
           if (userId) {
             const userDoc = await db.collection('users').doc(userId).get();
             if (userDoc.exists) {
-              targetToken = userDoc.data()?.fcmToken;
+              const d = userDoc.data();
+              targetToken = d?.fcmToken || (Array.isArray(d?.fcmTokens) ? d?.fcmTokens[0] : undefined);
             }
           }
           if (!targetToken && userEmail) {
             const cleanEmail = userEmail.trim().toLowerCase();
             const emailDoc = await db.collection('users').doc(cleanEmail).get();
             if (emailDoc.exists) {
-              targetToken = emailDoc.data()?.fcmToken;
+              const d = emailDoc.data();
+              targetToken = d?.fcmToken || (Array.isArray(d?.fcmTokens) ? d?.fcmTokens[0] : undefined);
             } else {
               const querySnap = await db.collection('users').where('email', '==', cleanEmail).limit(1).get();
               if (!querySnap.empty && querySnap.docs[0]) {
-                targetToken = querySnap.docs[0].data()?.fcmToken;
+                const d = querySnap.docs[0].data();
+                targetToken = d?.fcmToken || (Array.isArray(d?.fcmTokens) ? d?.fcmTokens[0] : undefined);
               }
             }
           }
           if (targetToken) {
-            console.log(`[FCM Vercel API] Retrieved target FCM token from Firestore for ${userId || userEmail}`);
+            console.log(`[FCM Vercel API] Retrieved target FCM token from Firestore for ${userId || userEmail}: ${targetToken.substring(0, 15)}...`);
+          } else {
+            console.warn(`[FCM Vercel API] No FCM token found in Firestore for ${userId || userEmail}.`);
           }
         } catch (fsErr: any) {
           console.warn('[FCM Vercel API] Firestore token lookup warning:', fsErr?.message || fsErr);

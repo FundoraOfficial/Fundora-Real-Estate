@@ -77,6 +77,8 @@ export interface UserAccount {
   registrationDate: string;
   avatarUrl?: string;
   kycStatus?: 'Unverified' | 'Under Review' | 'Verified' | 'Rejected';
+  isKycVerified?: boolean;
+  kycSubmitted?: boolean;
   kycFullName?: string;
   kycCountry?: string;
   kycDocumentType?: string;
