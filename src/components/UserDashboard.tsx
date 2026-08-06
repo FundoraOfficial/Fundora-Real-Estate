@@ -4201,47 +4201,46 @@ ${activeViewDoc.project.description}`
 
             {/* Timed Claim rules and digital timer */}
             <div className="bg-[#0e112d] border border-indigo-500/40 rounded-[1.25rem] p-5 space-y-4 shadow-xl text-white">
-              <div className="flex items-center space-x-2.5 pb-2 border-b border-indigo-500/20">
-                <div className="p-2 bg-indigo-500/10 rounded-xl text-indigo-400 shrink-0 border border-indigo-500/20">
-                  <Clock className="w-5 h-5 animate-pulse" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-sans font-bold text-white">Profit Claim Center</h4>
-                  <span className="text-[10px] text-indigo-200/90 font-mono">Real-time smart contract settlement desk</span>
-                </div>
-              </div>
-
-              {/* Rules block */}
-              <div className="p-3.5 bg-[#060819] rounded-xl border border-indigo-500/20 text-xs text-indigo-200 space-y-2 leading-relaxed">
-                <span className="font-bold text-white block uppercase font-mono tracking-wider text-[10px]">Claims Window Constraints</span>
-                <p>
-                  1. Profit payouts are accrued dynamically to portfolios but are only claimable twice daily: between <strong className="text-amber-300 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/25">04:00 PM and 05:00 PM</strong>, and again between <strong className="text-amber-300 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/25">09:00 PM and 10:00 PM</strong>.
-                </p>
-                <p>
-                  2. If you do not claim within these hourly timelines, your profit <strong className="text-rose-400 font-semibold">expires automatically</strong> for that slot and is permanently unrecoverable.
-                </p>
-              </div>
-
-              {/* Live Simulated clock display */}
-              <div className="p-5 bg-[#060819] rounded-xl border border-indigo-500/30 text-center space-y-2">
-                <span className="text-[9px] uppercase font-mono tracking-widest text-indigo-300 font-bold block">Current System Clock HUD</span>
-                <div className="text-3xl font-black text-white font-mono tracking-wider animate-pulse">
-                  {simulatedHour.toString().padStart(2, '0')}:{simulatedMinute.toString().padStart(2, '0')}
-                </div>
-                <div className="flex items-center justify-center space-x-1.5 text-xs font-mono">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
-                  <span className="text-indigo-200">Local evaluation timezone lock</span>
-                </div>
-              </div>
 
               {/* Payout actions */}
               <div className="bg-[#13163a]/40 p-4 rounded-xl border border-indigo-500/20 flex flex-col items-center justify-center space-y-4">
                 
-                <div className="text-center font-mono">
-                  <span className="text-indigo-300 text-[9px] uppercase block font-bold">Yield pool ready today</span>
-                  <span className="text-2xl font-black text-emerald-400 font-sans mt-0.5 block">
+                <div className="w-full text-center font-mono space-y-2">
+                  <span className="text-indigo-300 text-[10px] uppercase block font-bold tracking-wider">
+                    Claimable Amount (100% Yield)
+                  </span>
+                  <span className="text-3xl font-black text-emerald-400 font-sans mt-0.5 block">
                     {calculatedDailyProfit > 0 ? `$${calculatedDailyProfit.toFixed(2)} USDT` : '$0.00 USDT'}
                   </span>
+
+                  {/* 2-Slot Breakdown Cards */}
+                  <div className="pt-2 border-t border-indigo-500/20 grid grid-cols-2 gap-2.5 text-left">
+                    <div className="bg-[#060819] p-2.5 rounded-xl border border-indigo-500/30 space-y-1">
+                      <div className="flex items-center justify-between text-[9px] font-bold text-amber-300 uppercase">
+                        <span>1st Claim Slot</span>
+                        <span className="px-1 py-0.2 bg-amber-500/10 rounded border border-amber-500/20">50%</span>
+                      </div>
+                      <div className="text-[10px] text-indigo-200 font-mono">04:00 PM - 05:00 PM</div>
+                      <div className="text-xs font-bold text-emerald-400 font-sans">
+                        ${(calculatedDailyProfit / 2).toFixed(2)} USDT
+                      </div>
+                    </div>
+
+                    <div className="bg-[#060819] p-2.5 rounded-xl border border-indigo-500/30 space-y-1">
+                      <div className="flex items-center justify-between text-[9px] font-bold text-amber-300 uppercase">
+                        <span>2nd Claim Slot</span>
+                        <span className="px-1 py-0.2 bg-amber-500/10 rounded border border-amber-500/20">50%</span>
+                      </div>
+                      <div className="text-[10px] text-indigo-200 font-mono">09:00 PM - 10:00 PM</div>
+                      <div className="text-xs font-bold text-emerald-400 font-sans">
+                        ${(calculatedDailyProfit / 2).toFixed(2)} USDT
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className="text-[10px] text-indigo-200/90 pt-1 font-sans">
+                    Total Daily Yield: <strong className="text-white">${calculatedDailyProfit.toFixed(2)} USDT</strong> (Divided into 2 daily claims)
+                  </p>
                 </div>
 
                 <button
@@ -4292,7 +4291,7 @@ ${activeViewDoc.project.description}`
                     <>
                       <Sparkles className="w-5 h-5 text-yellow-300 animate-bounce group-hover:scale-125 group-hover:rotate-12 transition-transform duration-300 shrink-0" />
                       <span className="font-sans font-black tracking-widest text-[13px] drop-shadow-sm">
-                        Collect Profit ({simulatedHour === 16 ? '04:00 PM' : '09:00 PM'} Slot)
+                        Collect ${(calculatedDailyProfit / 2).toFixed(2)} USDT ({simulatedHour === 16 ? '04:00 PM' : '09:00 PM'} Slot)
                       </span>
                       {/* Active green breathing beacon indicator */}
                       <span className="relative flex h-2.5 w-2.5 ml-1 shrink-0">
@@ -4309,12 +4308,19 @@ ${activeViewDoc.project.description}`
                     </>
                   )}
                 </button>
-                {!isClaimWindowActive && (
-                  <p className="text-center text-[10px] text-indigo-300 font-medium bg-[#060819] px-3 py-1.5 rounded-lg border border-indigo-500/20">
-                    * Note: This settlement clock uses secure synchronized real-time. Please revisit when the clock reaches 04:00 PM or 09:00 PM in your localized slot.
-                  </p>
-                )}
 
+
+              </div>
+
+              {/* Rules block placed below claim buttons */}
+              <div className="p-3.5 bg-[#060819] rounded-xl border border-indigo-500/20 text-xs text-indigo-200 space-y-2 leading-relaxed">
+                <span className="font-bold text-white block uppercase font-mono tracking-wider text-[10px]">Claims Window Constraints</span>
+                <p>
+                  1. Profit payouts are accrued dynamically to portfolios but are only claimable twice daily: between <strong className="text-amber-300 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/25">04:00 PM and 05:00 PM</strong>, and again between <strong className="text-amber-300 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/25">09:00 PM and 10:00 PM</strong>.
+                </p>
+                <p>
+                  2. If you do not claim within these hourly timelines, your profit <strong className="text-rose-400 font-semibold">expires automatically</strong> for that slot and is permanently unrecoverable.
+                </p>
               </div>
 
             </div>
@@ -4330,22 +4336,25 @@ ${activeViewDoc.project.description}`
                 <table className="w-full text-left border-collapse min-w-[400px] sm:min-w-full">
                   <thead>
                     <tr className="bg-[#060819] text-emerald-300 border-b border-emerald-500/20 uppercase text-[8px] font-bold text-center">
-                      <th className="p-3 text-left">Date Grid</th>
+                      <th className="p-3 text-left">Date & Claim Time</th>
                       <th className="p-3 text-left">Settlement ID</th>
                       <th className="p-3">Yield Amount</th>
-                      <th className="p-3">Settlement Check</th>
+                      <th className="p-3">Slot & Status</th>
                       <th className="p-3">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-emerald-500/10 text-center text-slate-300">
                     {successfulClaims.map((cl) => (
                       <tr key={cl.id} className="hover:bg-[#13163a]/40 border-b border-emerald-500/5">
-                        <td className="p-3 text-left text-[9px] text-slate-400">{cl.date}</td>
+                        <td className="p-3 text-left text-[9px] text-slate-300 font-mono">
+                          <div>{cl.date}</div>
+                          <div className="text-emerald-400 font-bold">{cl.claimedAt ? `@ ${cl.claimedAt}` : 'Within Slot'}</div>
+                        </td>
                         <td className="p-3 text-left font-mono text-[9px] text-emerald-300 select-all">{cl.id}</td>
                         <td className="p-3 font-semibold text-white">${cl.amount.toFixed(2)}</td>
                         <td className="p-3">
-                          <span className="px-2 py-0.5 rounded text-[8px] tracking-wide font-extrabold uppercase border bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
-                            {cl.status}
+                          <span className="px-2 py-0.5 rounded text-[8px] tracking-wide font-extrabold uppercase border bg-emerald-500/10 text-emerald-400 border-emerald-500/20 block w-fit mx-auto">
+                            {cl.status} {cl.slot ? `(${cl.slot === 16 ? '04:00 PM Slot' : '09:00 PM Slot'})` : ''}
                           </span>
                         </td>
                         <td className="p-3">
@@ -4383,22 +4392,29 @@ ${activeViewDoc.project.description}`
                 <table className="w-full text-left border-collapse min-w-[400px] sm:min-w-full">
                   <thead>
                     <tr className="bg-[#060819] text-rose-300 border-b border-indigo-500/30 uppercase text-[8px] font-bold text-center">
-                      <th className="p-3 text-left">Date Grid</th>
+                      <th className="p-3 text-left">Date & Expiration Time</th>
                       <th className="p-3 text-left">Settlement ID</th>
                       <th className="p-3">Yield Amount</th>
-                      <th className="p-3">Settlement Check</th>
+                      <th className="p-3">Slot & Status</th>
                       <th className="p-3">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-indigo-500/10 text-center text-slate-300">
                     {missedClaims.map((cl) => (
                       <tr key={cl.id} className="hover:bg-[#13163a]/40 border-b border-indigo-500/10">
-                        <td className="p-3 text-left text-[9px] text-slate-400">{cl.date}</td>
+                        <td className="p-3 text-left text-[9px] text-slate-300 font-mono">
+                          <div>{cl.date}</div>
+                          <div className="text-rose-400 font-bold">
+                            {cl.claimedAt 
+                              ? `@ ${cl.claimedAt}` 
+                              : (cl.slot === 16 ? '@ 17:00 (Expired)' : cl.slot === 21 ? '@ 22:00 (Expired)' : '(Expired)')}
+                          </div>
+                        </td>
                         <td className="p-3 text-left font-mono text-[9px] text-indigo-300 select-all">{cl.id}</td>
                         <td className="p-3 font-semibold text-white">${cl.amount.toFixed(2)}</td>
                         <td className="p-3">
-                          <span className="px-2 py-0.5 rounded text-[8px] tracking-wide font-extrabold uppercase border bg-rose-500/10 text-rose-400 border-rose-500/20">
-                            {cl.status}
+                          <span className="px-2 py-0.5 rounded text-[8px] tracking-wide font-extrabold uppercase border bg-rose-500/10 text-rose-400 border-rose-500/20 block w-fit mx-auto">
+                            {cl.status} {cl.slot ? `(${cl.slot === 16 ? '04:00 PM Slot' : '09:00 PM Slot'})` : ''}
                           </span>
                         </td>
                         <td className="p-3">
@@ -5851,8 +5867,15 @@ ${activeViewDoc.project.description}`
                   <span className="text-emerald-600 font-black text-sm text-right">${Number(activeReceipt.item.amount).toFixed(2)} USDT</span>
                 </div>
                 <div className="flex justify-between items-center text-slate-500 gap-2">
-                  <span className="font-bold shrink-0">Timestamp:</span>
-                  <span className="text-slate-900 text-right">{activeReceipt.item.date} {activeReceipt.item.claimedAt ? `(${activeReceipt.item.claimedAt})` : ''}</span>
+                  <span className="font-bold shrink-0">
+                    {activeReceipt.type === 'claim' && (activeReceipt.item.status === 'Expired' || activeReceipt.item.status === 'Missed')
+                      ? 'Expiration Time:' 
+                      : 'Claim / Action Time:'}
+                  </span>
+                  <span className="text-slate-900 font-mono font-bold text-right">
+                    {activeReceipt.item.date ? activeReceipt.item.date.split(' ')[0] : ''} {activeReceipt.item.claimedAt ? `@ ${activeReceipt.item.claimedAt}` : (activeReceipt.item.date && activeReceipt.item.date.includes(' ') ? `@ ${activeReceipt.item.date.split(' ')[1]}` : '')}
+                    {activeReceipt.item.slot ? ` [${activeReceipt.item.slot === 16 ? '04:00-05:00 PM Slot' : '09:00-10:00 PM Slot'}]` : ''}
+                  </span>
                 </div>
                 
                 {activeReceipt.type === 'transaction' && activeReceipt.item.network && (

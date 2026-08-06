@@ -176,66 +176,75 @@ export function generateReceiptPDF(item: any, type: 'transaction' | 'claim') {
 
   // 1. Header Box (Dark Theme)
   doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-  doc.rect(0, 0, pageWidth, 45, 'F');
+  doc.rect(0, 0, pageWidth, 48, 'F');
 
   // Brand Name
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(22);
+  doc.setFontSize(16);
   doc.text('FUNDORA REAL ESTATE', 15, 18);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
+  doc.setFontSize(8.5);
   doc.setTextColor(150, 180, 200);
-  doc.text('SECURE DECENTRALIZED LEDGER RECEIPT', 15, 25);
+  doc.text('SECURE DECENTRALIZED LEDGER RECEIPT', 15, 29);
 
   // Decorative Accent bar
   doc.setFillColor(accentColor[0], accentColor[1], accentColor[2]);
-  doc.rect(0, 42, pageWidth, 3, 'F');
+  doc.rect(0, 45, pageWidth, 3, 'F');
 
   // Receipt ID on right of header
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
+  doc.setFontSize(10);
   const titleId = type === 'transaction' ? 'TX ID:' : 'CLAIM ID:';
   doc.text(`${titleId} ${item.id}`, pageWidth - 15, 18, { align: 'right' });
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
+  doc.setFontSize(8.5);
   doc.setTextColor(200, 200, 200);
   const statusStr = item.status || 'Verified';
-  doc.text(`STATUS: ${statusStr.toUpperCase()}`, pageWidth - 15, 25, { align: 'right' });
+  doc.text(`STATUS: ${statusStr.toUpperCase()}`, pageWidth - 15, 29, { align: 'right' });
 
   // 2. Main Title
   doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.text('OFFICIAL TRANSACTION RECEIPT', 15, 60);
+  doc.setFontSize(14);
+  doc.text(type === 'claim' ? 'OFFICIAL YIELD CLAIM RECEIPT' : 'OFFICIAL TRANSACTION RECEIPT', 15, 58);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
+  doc.setFontSize(9);
   doc.setTextColor(100, 116, 139);
-  doc.text('This document verifies that the transaction described below is recorded and cleared in the Fundora Real Estate central ledger.', 15, 66, { maxWidth: 180 });
+  doc.text(type === 'claim' ? 'This document certifies the official yield payout settlement and clearance index recorded on the Fundora Real Estate ledger.' : 'This document verifies that the transaction described below is recorded and cleared in the Fundora Real Estate central ledger.', 15, 66, { maxWidth: 180 });
 
   // 3. Grid Details
   doc.setDrawColor(226, 232, 240); // Slate 200
   doc.setLineWidth(0.3);
-  doc.line(15, 75, pageWidth - 15, 75);
+  doc.line(15, 76, pageWidth - 15, 76);
 
-  let y = 85;
+  let y = 84;
   const drawRow = (label: string, value: string) => {
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
+    doc.setFontSize(9.5);
     doc.setTextColor(71, 85, 105);
     doc.text(label, 15, y);
 
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
+    doc.setFontSize(9.5);
     doc.setTextColor(15, 23, 42);
-    doc.text(value, 75, y, { maxWidth: 120 });
 
-    doc.line(15, y + 4, pageWidth - 15, y + 4);
-    y += 12;
+    const splitVal = doc.splitTextToSize(value || 'N/A', 115);
+    doc.text(splitVal, 75, y);
+
+    const lineCount = Array.isArray(splitVal) ? splitVal.length : 1;
+    const contentHeight = Math.max(5, lineCount * 4.2);
+    const lineY = y + contentHeight + 1;
+
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.3);
+    doc.line(15, lineY, pageWidth - 15, lineY);
+
+    y = lineY + 5.5;
   };
 
   // Populate data based on type
@@ -254,39 +263,51 @@ export function generateReceiptPDF(item: any, type: 'transaction' | 'claim') {
     }
     drawRow('Details', item.description || 'N/A');
   } else {
+    const isClaimed = item.status === 'Claimed' || item.status === 'Completed';
+    const slotText = item.slot === 16 ? '04:00 PM - 05:00 PM (Slot 1)' : item.slot === 21 ? '09:00 PM - 10:00 PM (Slot 2)' : (item.description && item.description.includes('04:00 PM') ? '04:00 PM - 05:00 PM (Slot 1)' : item.description && item.description.includes('09:00 PM') ? '09:00 PM - 10:00 PM (Slot 2)' : 'Daily Claim Window');
+    
+    let timeFormatted = item.claimedAt || '';
+    if (!timeFormatted && item.date && item.date.includes(' ')) {
+      timeFormatted = item.date.split(' ')[1];
+    }
+    if (!timeFormatted) {
+      timeFormatted = isClaimed ? '16:00:00' : '17:00:00 (Window Closed)';
+    }
+
     drawRow('Settlement ID', item.id);
     drawRow('User Account', item.userEmail || 'N/A');
-    drawRow('Settlement Type', 'Daily Yield Claim');
-    drawRow('Accrued Amount', `$${Number(item.amount).toFixed(2)} USDT`);
-    drawRow('Settlement Date', item.date);
-    drawRow('Claim Timestamp', item.claimedAt ? `${item.date} ${item.claimedAt}` : `${item.date} (Settled)`);
-    drawRow('Status', item.status || 'Claimed');
-    drawRow('Details', 'Dynamic portfolio yield credited straight to available balance.');
+    drawRow('Settlement Type', 'Daily Yield Claim (50% Slot Payout)');
+    drawRow('Accrued Yield Amount', `$${Number(item.amount).toFixed(2)} USDT`);
+    drawRow('Settlement Date', item.date ? item.date.split(' ')[0] : 'N/A');
+    drawRow(isClaimed ? 'Exact Claim Time' : 'Expiration Time', timeFormatted);
+    drawRow('Claim Window Slot', slotText);
+    drawRow('Status', isClaimed ? 'CLAIMED & CREDITED' : (item.status ? item.status.toUpperCase() : 'MISSED / EXPIRED'));
+    drawRow('Details', item.description || (isClaimed ? `50% fractional portfolio yield claimed at ${timeFormatted} and credited directly to available balance.` : `50% fractional portfolio yield unclaimed during the ${slotText} window; marked expired at ${timeFormatted}.`));
   }
 
   // 4. Security Seal & Signatures
-  y += 5;
+  y += 4;
   doc.setFillColor(248, 250, 252); // Slate 50
   doc.setDrawColor(203, 213, 225); // Slate 300
-  doc.roundedRect(15, y, pageWidth - 30, 32, 3, 3, 'FD');
+  doc.roundedRect(15, y, pageWidth - 30, 30, 3, 3, 'FD');
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
   doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-  doc.text('PLATFORM COMPLIANCE INTEGRITY AUDIT', 20, y + 8);
+  doc.text('PLATFORM COMPLIANCE INTEGRITY AUDIT', 20, y + 7);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(100, 116, 139);
-  doc.text('This is a computer-generated, cryptographically signed ledger record. The integrity of this clearance index is verified under platform compliance locks. No physical signature is required.', 20, y + 14, { maxWidth: 115 });
+  doc.text('This is a computer-generated, cryptographically signed ledger record. The integrity of this clearance index is verified under platform compliance locks. No physical signature is required.', 20, y + 13, { maxWidth: 115 });
 
   // Verified Badge
   doc.setFillColor(accentColor[0], accentColor[1], accentColor[2]);
-  doc.roundedRect(pageWidth - 65, y + 18, 40, 8, 1.5, 1.5, 'F');
+  doc.roundedRect(pageWidth - 65, y + 16, 40, 8, 1.5, 1.5, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
-  doc.text('✓ LEDGER VERIFIED', pageWidth - 45, y + 23, { align: 'center' });
+  doc.text('LEDGER VERIFIED', pageWidth - 45, y + 21, { align: 'center' });
 
   // 5. Tech Barcode-like element and Footer
   doc.setDrawColor(15, 23, 42);
@@ -325,30 +346,30 @@ export function generateDocumentPDF(docName: string, project: any) {
 
   // 1. Header Band
   doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-  doc.rect(0, 0, pageWidth, 40, 'F');
+  doc.rect(0, 0, pageWidth, 48, 'F');
 
   // Decorative Accent bar
   doc.setFillColor(accentColor[0], accentColor[1], accentColor[2]);
-  doc.rect(0, 38, pageWidth, 2, 'F');
+  doc.rect(0, 45, pageWidth, 3, 'F');
 
   // Brand Header
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
-  doc.text('FUNDORA FRACTIONAL REAL ESTATE', 15, 16);
+  doc.setFontSize(16);
+  doc.text('FUNDORA FRACTIONAL REAL ESTATE', 15, 18);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
+  doc.setFontSize(8.5);
   doc.setTextColor(148, 163, 184);
-  doc.text('SECURE CO-OWNERSHIP DEED & LEGAL REGULATION DEPOSIT', 15, 22);
+  doc.text('SECURE CO-OWNERSHIP DEED & LEGAL REGULATION DEPOSIT', 15, 29);
 
   // Document Badge on Header
   doc.setFillColor(secondaryColor[0], secondaryColor[1], secondaryColor[2]);
-  doc.roundedRect(pageWidth - 75, 10, 60, 7, 1.5, 1.5, 'F');
+  doc.roundedRect(pageWidth - 75, 12, 60, 7.5, 1.5, 1.5, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
-  doc.text('OFFICIAL CERTIFIED DEED', pageWidth - 45, 14.5, { align: 'center' });
+  doc.text('OFFICIAL CERTIFIED DEED', pageWidth - 45, 17, { align: 'center' });
 
   // 2. Document Details Section
   doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
@@ -376,10 +397,19 @@ export function generateDocumentPDF(docName: string, project: any) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9.5);
     doc.setTextColor(15, 23, 42);
-    doc.text(value, 75, y, { maxWidth: 120 });
 
-    doc.line(15, y + 4, pageWidth - 15, y + 4);
-    y += 11;
+    const splitVal = doc.splitTextToSize(value || 'N/A', 115);
+    doc.text(splitVal, 75, y);
+
+    const lineCount = Array.isArray(splitVal) ? splitVal.length : 1;
+    const contentHeight = Math.max(5, lineCount * 4.2);
+    const lineY = y + contentHeight + 1;
+
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.3);
+    doc.line(15, lineY, pageWidth - 15, lineY);
+
+    y = lineY + 5.5;
   };
 
   drawRow('Property Asset Name', project.name);
@@ -472,7 +502,7 @@ The sovereign land registry and local municipal boards have reviewed the digital
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
-  doc.text('✓ STATUS: SECURED', pageWidth - 45, y + 23, { align: 'center' });
+  doc.text('STATUS: SECURED', pageWidth - 45, y + 23, { align: 'center' });
 
   // Barcode / Tech footer
   doc.setDrawColor(15, 23, 42);
