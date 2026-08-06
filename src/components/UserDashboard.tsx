@@ -28,6 +28,7 @@ import {
   NotificationPreferences 
 } from '../utils/notifications';
 import NotificationPermissionModal from './NotificationPermissionModal';
+import { isNativeAppContainer } from '../utils/nativeApp';
 
 interface UserDashboardProps {
   activeUser: UserAccount;
@@ -844,7 +845,7 @@ export default function UserDashboard({
 
   // Detailed status-based investment breakdowns
   const activeInvestments = useMemo(() => {
-    return investments.filter(inv => inv.status !== 'Completed' && inv.status !== 'Liquidated');
+    return investments.filter(inv => inv.status !== 'Completed' && inv.status !== 'Liquidated' && (inv as any).status !== 'Terminated' && (inv as any).status !== 'Cancelled');
   }, [investments]);
 
   const activeTotalInvest = useMemo(() => {
@@ -860,7 +861,7 @@ export default function UserDashboard({
   }, [maturedInvestments]);
 
   const liquidatedInvestments = useMemo(() => {
-    return investments.filter(inv => inv.status === 'Liquidated');
+    return investments.filter(inv => inv.status === 'Liquidated' || (inv as any).status === 'Terminated' || (inv as any).status === 'Cancelled');
   }, [investments]);
 
   const liquidatedTotalInvest = useMemo(() => {
@@ -870,7 +871,7 @@ export default function UserDashboard({
   // 2. Daily Profit (Accumulated from active investments based on ROI percentage scaled to 1 day)
   const calculatedDailyProfit = useMemo(() => {
     return investments.reduce((sum, inv) => {
-      const isActive = inv.status !== 'Completed' && inv.status !== 'Liquidated';
+      const isActive = inv.status !== 'Completed' && inv.status !== 'Liquidated' && (inv as any).status !== 'Terminated' && (inv as any).status !== 'Cancelled';
       return isActive ? sum + inv.dailyProfitRate : sum;
     }, 0);
   }, [investments]);
@@ -925,8 +926,8 @@ export default function UserDashboard({
 
   // 8. Active Projects count
   const activeProjectsCount = useMemo(() => {
-    return new Set(investments.map(i => i.projectId)).size;
-  }, [investments]);
+    return new Set(activeInvestments.map(i => i.projectId)).size;
+  }, [activeInvestments]);
 
   // 9. Referral Earnings (sum of Completed Referral Bonus transactions)
   const referralEarningsSum = useMemo(() => {
@@ -1655,17 +1656,19 @@ export default function UserDashboard({
 
         {/* Sidenav bottom commands */}
         <div className="p-4 border-t border-slate-900 bg-slate-950 space-y-2">
-          <a
-            href="/download/app-fundora.apk"
-            target="_blank"
-            rel="noopener noreferrer"
-            download="app-fundora.apk"
-            className="w-full py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold uppercase rounded-lg tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-          >
-            <Smartphone className="w-3.5 h-3.5" />
-            <span>Download App (APK)</span>
-            <Download className="w-3 h-3" />
-          </a>
+          {!isNativeAppContainer() && (
+            <a
+              href="/download/app-fundora.apk"
+              target="_blank"
+              rel="noopener noreferrer"
+              download="app-fundora.apk"
+              className="w-full py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold uppercase rounded-lg tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+              <span>Download App (APK)</span>
+              <Download className="w-3 h-3" />
+            </a>
+          )}
           {activeUser.role === 'admin' && (
             <button
               onClick={onNavigateAdmin}

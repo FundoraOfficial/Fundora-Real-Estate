@@ -275,6 +275,64 @@ export const STRUCTURED_FAQ_DATABASE: StructuredFAQ[] = [
     }
   },
   {
+    id: 'faq_wallet_unbind_reset',
+    category: 'account',
+    title: 'Wallet Address Binding & Direct Instant Unbinding / Reset',
+    keywords: [
+      'unbind', 'unbind wallet', 'wallet unbind', 'reset wallet', 'change wallet', 'change address',
+      'wallet address', 'bep20 unbind', 'trc20 unbind', 'wallet change', 'address badalna', 'wallet reset',
+      'unbind kaise karein', 'wallet unbind kaise hoga', 'address change', 'والٹ ان بائنڈ', 'والٹ تبدیل',
+      'إلغاء ربط المحفظة', 'تغيير المحفظة', 'فك الربط', 'wallet menu', 'wallet tab'
+    ],
+    metadata: {
+      location: 'Wallet Menu Tab',
+      networksSupported: ['USDT-BEP20', 'USDT-TRC20'],
+      unbindSpeed: 'Instant Direct Reset (0 Seconds Wait, No Admin Approval Needed)',
+      status: 'Fully Operational Direct Instant Unbind'
+    },
+    answers: {
+      en: `🔓 **Fundora Wallet Binding & Direct Instant Unbind Feature**:
+
+1. **Where to Find**: Open the **Wallet Menu** tab from your dashboard.
+2. **Binding Address**: Enter your USDT receiving address (**BEP20** or **TRC20**) and click Save/Bind.
+3. **Direct Instant Unbind**:
+   - Once bound, two compact micro buttons will appear side-by-side: **'🔓 BEP20 Unbind'** and **'🔓 TRC20 Unbind'**.
+   - Simply click the respective unbind button to **instantly reset** your wallet address with 1 click!
+   - **No Admin Approval Needed**: You don't have to wait for admin approval anymore! Unbinding is 100% instant and direct.
+4. **Re-binding**: After unbinding, you can immediately type and bind your new USDT wallet address for withdrawals.`,
+
+      ur: `🔓 **فنڈورا والٹ بائنڈنگ اور ڈائریکٹ انسٹنٹ (فوری) ان بائنڈ کا طریقہ**:
+
+1. **والٹ مینو**: اپنے ڈیش بورڈ سے **Wallet Menu** کھولیں۔
+2. **ایڈریس جوڑنا (Bind)**: اپنا USDT وصول کرنے والا ایڈریس (**BEP20** یا **TRC20**) درج کر کے سیو کریں۔
+3. **فوری ان بائنڈ (Instant Unbind)**:
+   - والٹ بائنڈ ہونے کے بعد سامنے دو بٹن ظاہر ہوں گے: **'🔓 BEP20 Unbind'** اور **'🔓 TRC20 Unbind'**۔
+   - ان بٹنز پر کلک کرتے ہی آپ کا ایڈریس **ایک ہی سیکنڈ میں فوراً ان بائنڈ** ہو جائے گا۔
+   - **ایڈمن کی منظوری کی ضرورت نہیں**: اب اپروول کا انتظار نہیں کرنا پڑتا، یہ نظام 100% فوراً کام کرتا ہے۔
+4. **نیا ایڈریس لگانا**: ان بائنڈ کرنے کے بعد آپ فوراً نیا USDT ایڈریس بائنڈ کر سکتے ہیں۔`,
+
+      roman_urdu: `🔓 **Fundora Wallet Binding & Direct Instant Unbind Feature**:
+
+1. **Kahan Milega**: Dashboard par **Wallet Menu** tab open karein.
+2. **Wallet Bind Kaise Karein**: Apna USDT receiving address (**BEP20** ya **TRC20**) enter karke bind karein.
+3. **Direct Instant Unbind**:
+   - Address bind hone k baad samne **'🔓 BEP20 Unbind'** aur **'🔓 TRC20 Unbind'** ke micro buttons nazar aate hain.
+   - Click karte he aapka address **instantly reset / unbind** ho jata hai!
+   - **No Waiting / No Admin Approval**: Admin approval ka koi wait nahi hai, single click par instant unbind ho jata hai.
+4. **New Address**: Unbind karne ke baad aap instantly naya wallet address enter karke withdraw le sakte hain.`,
+
+      ar: `🔓 **ميزة ربط المحفظة وإلغاء الربط الفوري المباشر (Unbind)**:
+
+1. **المكان**: افتح تبويب **Wallet Menu** في لوحة التحكم.
+2. **ربط العنوان**: أدخل عنوان استقبال USDT الخاص بك (شبكة **BEP20** أو **TRC20**) واضغط حفظ.
+3. **إلغاء الربط الفوري (Unbind)**:
+   - بمجرد الربط، ستظهر لك أزرار **'🔓 BEP20 Unbind'** و **'🔓 TRC20 Unbind'**.
+   - اضغط على الزر لإلغاء ربط محفظتك وإعادتها وضعها الأولي **فوراً خلال ثوانٍ معدودة**!
+   - **بدون انتظار موافقة الأدمن**: إلغاء الربط أصبح مباشراً ومستقلاً تماماً.
+4. **إعادة الربط**: بعد إلغاء الربط يمكنك إدخال عنوان محفظة جديد فوراً للسحب.`
+    }
+  },
+  {
     id: 'faq_uk_registration_legal',
     category: 'legal',
     title: 'UK Companies House Official Registration & Legal Standing',
@@ -684,6 +742,7 @@ export function generateSmartFundoraAnswer(
   }
 
   // Intent checks if searchStructuredFAQ didn't catch an explicit reply
+  const isUnbindIntent = query.includes('unbind') || query.includes('reset') || query.includes('change wallet') || query.includes('wallet reset') || query.includes('address change') || message.includes('ان بائنڈ') || message.includes('فك الربط');
   const isDepositIntent = query.includes('deposit') || query.includes('deposite') || query.includes('recharge') || query.includes('dalna') || query.includes('paisa') || query.includes('paise') || query.includes('trc20') || query.includes('bep20') || message.includes('ڈپازٹ') || message.includes('جمع');
   const isWithdrawIntent = query.includes('withdraw') || query.includes('withdrawal') || query.includes('nikalna') || query.includes('nikalein') || query.includes('payout') || query.includes('cashout') || message.includes('ودڈرال') || message.includes('سحب');
   const isRoiProfitIntent = query.includes('roi') || query.includes('profit') || query.includes('yield') || query.includes('kamai') || query.includes('munafa') || query.includes('return') || query.includes('earning') || query.includes('daily') || message.includes('منافع') || message.includes('ییلڈ');
@@ -692,7 +751,8 @@ export function generateSmartFundoraAnswer(
   const isAppIntent = query.includes('app') || query.includes('apk') || query.includes('download') || query.includes('android') || query.includes('mobile') || message.includes('ایپ');
 
   let targetFaqId = 'faq_fractional_coownership_how_it_works';
-  if (isDepositIntent) targetFaqId = 'faq_deposit_procedure';
+  if (isUnbindIntent) targetFaqId = 'faq_wallet_unbind_reset';
+  else if (isDepositIntent) targetFaqId = 'faq_deposit_procedure';
   else if (isWithdrawIntent) targetFaqId = 'faq_withdrawal_rules';
   else if (isRoiProfitIntent) targetFaqId = 'faq_property_roi_yields';
   else if (isLegalIntent) targetFaqId = 'faq_uk_registration_legal';
