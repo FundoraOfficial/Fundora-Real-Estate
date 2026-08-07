@@ -173,6 +173,15 @@ export default function AdminPanel({
     };
 
     try {
+      // Save reply to localStorage for direct message synchronization
+      const rawDms = localStorage.getItem('fundora_community_messages');
+      const existingDms = rawDms ? JSON.parse(rawDms) : [];
+      if (!existingDms.some((m: any) => m.id === replyMsg.id)) {
+        existingDms.push(replyMsg);
+        localStorage.setItem('fundora_community_messages', JSON.stringify(existingDms));
+        window.dispatchEvent(new Event('storage'));
+      }
+
       if (db) {
         await setDoc(doc(db, 'messages', replyMsg.id), replyMsg);
         await setDoc(doc(db, 'inquiries', inq.id), cleanPayloadForFirestore({

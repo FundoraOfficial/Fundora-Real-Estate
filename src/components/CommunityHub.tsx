@@ -131,6 +131,28 @@ const INITIAL_MESSAGES: Record<string, CommunityMessage[]> = {
   ]
 };
 
+const getStoredLocalDms = (): CommunityMessage[] => {
+  try {
+    const raw = localStorage.getItem('fundora_community_messages');
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+};
+
+const saveLocalDmMessage = (msg: CommunityMessage) => {
+  try {
+    const existing = getStoredLocalDms();
+    if (!existing.some(m => m.id === msg.id)) {
+      const updated = [...existing, msg];
+      localStorage.setItem('fundora_community_messages', JSON.stringify(updated));
+      window.dispatchEvent(new Event('storage'));
+    }
+  } catch (e) {
+    console.warn("Failed to persist DM to localStorage", e);
+  }
+};
+
 const MOCK_TRUSTEES = [
   {
     id: 'admin-1',
@@ -223,26 +245,61 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
 
   // Effective visitor identity for DM separation (works for both logged-in users and guest/unauthenticated viewers)
   const effectiveUser = useMemo(() => {
-    if (currentUser && currentUser.id && currentUser.id !== 'user-1' && currentUser.id !== 'user-demo' && currentUser.email !== 'user@fundora.one' && currentUser.email !== 'investor@example.com' && currentUser.name !== 'Active Investor' && currentUser.name !== 'Alex Mercer') {
-      return { id: currentUser.id, name: currentUser.name, email: currentUser.email, avatar: currentUser.avatarUrl || '👤', isGuest: false };
+    if (currentUser && (currentUser.name || currentUser.email)) {
+      return {
+        id: currentUser.id || 'usr-investor',
+        name: currentUser.name || currentUser.email?.split('@')[0] || 'Active Investor',
+        email: currentUser.email || 'investor@fundora.one',
+        avatar: currentUser.avatarUrl || '👤',
+        isGuest: false
+      };
     }
     let guestId = localStorage.getItem('fundora_guest_dm_id');
     let guestName = localStorage.getItem('fundora_guest_dm_name');
     if (!guestId) {
       const rand = Math.floor(1000 + Math.random() * 9000);
       guestId = `guest-${rand}`;
-      guestName = `Guest Viewer #${rand}`;
+      guestName = `Investor Guest #${rand}`;
       localStorage.setItem('fundora_guest_dm_id', guestId);
       localStorage.setItem('fundora_guest_dm_name', guestName);
     }
-    return { id: guestId, name: guestName || 'Guest Viewer', email: `${guestId}@guest.fundora.one`, avatar: '👤', isGuest: true };
+    return { id: guestId, name: guestName || 'Investor Guest', email: `${guestId}@guest.fundora.one`, avatar: '👤', isGuest: true };
   }, [currentUser]);
 
   const [allDmMessages, setAllDmMessages] = useState<CommunityMessage[]>([]);
 
-  // Subscribe to all DM messages across Firestore to build admin multi-user DM threads
+  // Subscribe to all DM messages across Firestore and localStorage
   useEffect(() => {
-    if (!db) return;
+    // 1. Load local DM messages immediately
+    const localDms = getStoredLocalDms();
+    if (localDms.length > 0) {
+      setAllDmMessages(prev => {
+        const msgMap = new Map<string, CommunityMessage>();
+        prev.forEach(m => msgMap.set(m.id, m));
+        localDms.forEach(m => msgMap.set(m.id, m));
+        return Array.from(msgMap.values());
+      });
+    }
+
+    // 2. Storage event listener for multi-tab sync
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'fundora_community_messages') {
+        const dms = getStoredLocalDms();
+        setAllDmMessages(prev => {
+          const msgMap = new Map<string, CommunityMessage>();
+          prev.forEach(m => msgMap.set(m.id, m));
+          dms.forEach(m => msgMap.set(m.id, m));
+          return Array.from(msgMap.values());
+        });
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+
+    // 3. Firestore snapshot listener
+    if (!db) {
+      return () => window.removeEventListener('storage', handleStorageChange);
+    }
+
     try {
       const q = query(collection(db, 'messages'));
       const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -253,23 +310,42 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
             loaded.push({ id: docSnap.id, ...data });
           }
         });
-        setAllDmMessages(loaded);
+
+        // Merge Firestore loaded docs with local store
+        setAllDmMessages(prev => {
+          const msgMap = new Map<string, CommunityMessage>();
+          getStoredLocalDms().forEach(m => msgMap.set(m.id, m));
+          prev.forEach(m => msgMap.set(m.id, m));
+          loaded.forEach(m => msgMap.set(m.id, m));
+          return Array.from(msgMap.values());
+        });
       }, (err) => {
         console.warn("[DM Snapshot Listener Warning]", err);
       });
-      return () => unsubscribe();
+
+      return () => {
+        window.removeEventListener('storage', handleStorageChange);
+        unsubscribe();
+      };
     } catch (e) {
       console.warn("[DM Snapshot Warning]", e);
+      return () => window.removeEventListener('storage', handleStorageChange);
     }
   }, []);
 
   const userDmThreads = useMemo(() => {
     const dmMap = new Map<string, CommunityMessage>();
 
-    // Combine static INITIAL_MESSAGES for DMs and Firestore DM messages
+    // Combine static INITIAL_MESSAGES for DMs, localStorage, and Firestore DM messages
     Object.entries(INITIAL_MESSAGES).forEach(([chanId, msgList]) => {
       if (chanId.startsWith('dm-')) {
         msgList.forEach(m => dmMap.set(m.id, m));
+      }
+    });
+
+    getStoredLocalDms().forEach(m => {
+      if (m.channelId && m.channelId.startsWith('dm-')) {
+        dmMap.set(m.id, m);
       }
     });
 
@@ -320,21 +396,38 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
         targetAvatar = '🤖';
       }
 
-      // Find non-admin sender message in this channel
-      const userMsg = msgList.find(m => m.senderId !== 'ethan-ceo' && m.senderId !== 'admin-1' && m.senderId !== 'ai-assistant');
+      // Find non-admin sender messages in this channel
+      const userMsgs = msgList.filter(m => m.senderId !== 'ethan-ceo' && m.senderId !== 'admin-1' && m.senderId !== 'ai-assistant');
+      const bestUserMsg = [...userMsgs].reverse().find(m => m.senderName && m.senderName !== 'Community Member' && m.senderName !== 'Guest Visitor' && !m.senderName.startsWith('General ')) || userMsgs[userMsgs.length - 1] || userMsgs[0];
 
-      let userId = userMsg?.senderId || chanId.replace(/^dm-(ethan-ceo|admin-1|ai-assistant)-?/, '') || 'user';
-      let userName = userMsg?.senderName || 'Community Member';
-      let userEmail = userMsg?.senderEmail || (userId.startsWith('guest-') ? `${userId}@guest.fundora.one` : 'user@fundora.one');
-      let userAvatar = userMsg?.senderAvatar || '👤';
+      const customInqId = `inq-dm-${chanId}`;
+      const matchingInq = inquiriesList.find(i => i.channelId === chanId || i.id === customInqId);
 
-      if (chanId === 'dm-ethan-ceo' && !userMsg) {
-        userName = 'General Executive Channel';
-      } else if (chanId === 'dm-admin-1' && !userMsg) {
-        userName = 'General Support Channel';
+      let userId = bestUserMsg?.senderId || chanId.replace(/^dm-(ethan-ceo|admin-1|ai-assistant)-?/, '') || 'user';
+      let userName = bestUserMsg?.senderName;
+      let userEmail = bestUserMsg?.senderEmail || matchingInq?.email || (userId.startsWith('guest-') ? `${userId}@guest.fundora.one` : 'user@fundora.one');
+      let userAvatar = bestUserMsg?.senderAvatar || '👤';
+
+      // 1. Resolve name from Inquiry record if message name is generic
+      if ((!userName || userName === 'Community Member' || userName.startsWith('General ')) && matchingInq && matchingInq.name && matchingInq.name !== 'Community Member') {
+        userName = matchingInq.name;
       }
 
-      const matchingInq = inquiriesList.find(i => (i.channelId === chanId || i.id === `inq-dm-${chanId}`) && i.status === 'Pending');
+      // 2. Resolve name from user email if available
+      if ((!userName || userName === 'Community Member') && userEmail && userEmail !== 'user@fundora.one') {
+        const prefix = userEmail.split('@')[0];
+        userName = prefix.charAt(0).toUpperCase() + prefix.slice(1);
+      }
+
+      // 3. Fallback name formatting
+      if (!userName || userName === 'Community Member') {
+        if (chanId === 'dm-ethan-ceo') userName = 'General Executive Channel';
+        else if (chanId === 'dm-admin-1') userName = 'General Support Channel';
+        else if (userId.startsWith('guest-')) userName = `Guest (${userId.slice(-4)})`;
+        else userName = `User (${userId.slice(-6)})`;
+      }
+
+      const hasPendingInq = (matchingInq && matchingInq.status === 'Pending') || false;
       const lastSenderIsUser = lastMsg && lastMsg.senderId !== 'ethan-ceo' && lastMsg.senderId !== 'admin-1' && lastMsg.senderId !== 'ai-assistant';
 
       threads.push({
@@ -350,8 +443,46 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
         lastTimestamp: lastMsg ? lastMsg.timestamp : 'Just now',
         lastCreatedAt: lastMsg ? (lastMsg.createdAt || Date.now()) : Date.now(),
         messageCount: msgList.length,
-        hasPendingInquiry: !!matchingInq || !!lastSenderIsUser
+        hasPendingInquiry: hasPendingInq || lastSenderIsUser
       });
+    });
+
+    // Also include threads from inquiriesList if any DM channel has an inquiry record but no message doc yet
+    inquiriesList.forEach(inq => {
+      if (inq.channelId && inq.channelId.startsWith('dm-') && !grouped.has(inq.channelId)) {
+        let targetId = 'ethan-ceo';
+        let targetCategoryName = 'Ethan Chiu (CEO)';
+        let targetAvatar = '👨‍💼';
+
+        if (inq.channelId.includes('admin-1') || inq.channelId.includes('support')) {
+          targetId = 'admin-1';
+          targetCategoryName = 'Fundora Support Team';
+          targetAvatar = '🛟';
+        } else if (inq.channelId.includes('ai-assistant') || inq.channelId.includes('ai-bot')) {
+          targetId = 'ai-assistant';
+          targetCategoryName = 'Fundora AI Agent';
+          targetAvatar = '🤖';
+        }
+
+        const cleanText = inq.message.replace(/^💬\s*\[.*?\]:\s*/, '');
+        const uId = inq.channelId.replace(/^dm-(ethan-ceo|admin-1|ai-assistant)-?/, '') || 'user';
+
+        threads.push({
+          channelId: inq.channelId,
+          targetId,
+          targetCategoryName,
+          targetAvatar,
+          userId: uId,
+          userName: inq.name || 'Community Member',
+          userEmail: inq.email || 'user@fundora.one',
+          userAvatar: '👤',
+          lastMessageText: cleanText,
+          lastTimestamp: inq.timestamp ? new Date(inq.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently',
+          lastCreatedAt: inq.timestamp ? new Date(inq.timestamp).getTime() : Date.now(),
+          messageCount: 1,
+          hasPendingInquiry: inq.status === 'Pending'
+        });
+      }
     });
 
     return threads.sort((a, b) => b.lastCreatedAt - a.lastCreatedAt);
@@ -488,8 +619,60 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
 
   // Sync Messages from Firestore or Fallback
   useEffect(() => {
+    const initialForChan = INITIAL_MESSAGES[activeChannelId] || [];
+    const localDmsForChan = getStoredLocalDms().filter(m => 
+      m.channelId === activeChannelId || 
+      (activeChannelId.startsWith('dm-') && m.channelId && m.channelId === activeChannelId)
+    );
+    const dmsForChan = activeChannelId.startsWith('dm-') 
+      ? allDmMessages.filter(m => m.channelId === activeChannelId) 
+      : [];
+
+    const mergeAndSet = (firestoreMsgs: CommunityMessage[] = []) => {
+      const msgMap = new Map<string, CommunityMessage>();
+      initialForChan.forEach(m => msgMap.set(m.id, m));
+      localDmsForChan.forEach(m => msgMap.set(m.id, m));
+      dmsForChan.forEach(m => msgMap.set(m.id, m));
+      firestoreMsgs.forEach(m => msgMap.set(m.id, m));
+
+      // Synthesize user inquiry message if no user message exists in this DM channel yet
+      if (activeChannelId.startsWith('dm-')) {
+        const customInqId = `inq-dm-${activeChannelId}`;
+        const matchingInq = inquiriesList.find(i => i.channelId === activeChannelId || i.id === customInqId);
+        if (matchingInq && matchingInq.message) {
+          const userMsgsInMap = Array.from(msgMap.values()).filter(m => 
+            m.senderId !== 'ethan-ceo' && m.senderId !== 'admin-1' && m.senderId !== 'ai-assistant'
+          );
+          if (userMsgsInMap.length === 0) {
+            const cleanText = matchingInq.message.replace(/^💬\s*\[.*?\]:\s*/, '');
+            const synthMsg: CommunityMessage = {
+              id: `inq-msg-${matchingInq.id}`,
+              channelId: activeChannelId,
+              senderId: activeChannelId.replace(/^dm-(ethan-ceo|admin-1|ai-assistant)-?/, '') || 'user-inq',
+              senderName: matchingInq.name || 'Community Member',
+              senderEmail: matchingInq.email || 'user@fundora.one',
+              senderAvatar: '👤',
+              senderRole: 'Member',
+              text: cleanText,
+              timestamp: matchingInq.timestamp ? new Date(matchingInq.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently',
+              createdAt: matchingInq.timestamp ? new Date(matchingInq.timestamp).getTime() : (Date.now() - 1000)
+            };
+            msgMap.set(synthMsg.id, synthMsg);
+          }
+        }
+      }
+
+      const combined = Array.from(msgMap.values());
+      combined.sort((a, b) => {
+        const tA = a.createdAt || (a.timestamp && !a.timestamp.includes('M') ? new Date(a.timestamp).getTime() : 0) || 0;
+        const tB = b.createdAt || (b.timestamp && !b.timestamp.includes('M') ? new Date(b.timestamp).getTime() : 0) || 0;
+        return tA - tB;
+      });
+      setMessages(combined);
+    };
+
     if (!db) {
-      setMessages(INITIAL_MESSAGES[activeChannelId] || []);
+      mergeAndSet([]);
       return;
     }
 
@@ -504,34 +687,17 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
         snapshot.forEach(docSnap => {
           loadedMsgs.push({ id: docSnap.id, ...docSnap.data() } as CommunityMessage);
         });
-
-        // Combine initial static template messages for this channel with Firestore loaded docs
-        const initialForChan = INITIAL_MESSAGES[activeChannelId] || [];
-        const msgMap = new Map<string, CommunityMessage>();
-
-        initialForChan.forEach(m => msgMap.set(m.id, m));
-        loadedMsgs.forEach(m => msgMap.set(m.id, m));
-
-        const combined = Array.from(msgMap.values());
-
-        // Sort chronologically using numeric createdAt or fallback timestamp
-        combined.sort((a, b) => {
-          const tA = a.createdAt || (a.timestamp && !a.timestamp.includes('M') ? new Date(a.timestamp).getTime() : 0) || 0;
-          const tB = b.createdAt || (b.timestamp && !b.timestamp.includes('M') ? new Date(b.timestamp).getTime() : 0) || 0;
-          return tA - tB;
-        });
-
-        setMessages(combined);
+        mergeAndSet(loadedMsgs);
       }, (err) => {
         console.warn("[Community Firestore Listener Warning]", err);
-        setMessages(INITIAL_MESSAGES[activeChannelId] || []);
+        mergeAndSet([]);
       });
 
       return () => unsubscribe();
     } catch (e) {
-      setMessages(INITIAL_MESSAGES[activeChannelId] || []);
+      mergeAndSet([]);
     }
-  }, [activeChannelId]);
+  }, [activeChannelId, allDmMessages, inquiriesList]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -632,6 +798,8 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
       createdAt: msg.createdAt || Date.now()
     };
 
+    saveLocalDmMessage(fullMsg);
+
     // 1. Update static fallback store array for this channel so local state never loses sent messages
     if (!INITIAL_MESSAGES[fullMsg.channelId]) {
       INITIAL_MESSAGES[fullMsg.channelId] = [];
@@ -647,6 +815,14 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
       return updated.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
     });
 
+    // 3. Update allDmMessages if this is a DM message
+    if (fullMsg.channelId.startsWith('dm-')) {
+      setAllDmMessages(prev => {
+        if (prev.some(m => m.id === fullMsg.id)) return prev;
+        return [...prev, fullMsg];
+      });
+    }
+
     // 3. Save to Firestore messages collection using setDoc with fixed id
     if (db) {
       try {
@@ -659,6 +835,42 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
     // 4. Handle DM inquiry status and AI smart response
     const isUserSender = fullMsg.senderId !== 'ethan-ceo' && fullMsg.senderId !== 'admin-1' && fullMsg.senderId !== 'ai-assistant';
     const isDmChannel = fullMsg.channelId.startsWith('dm-');
+
+    // When user sends a DM, ALWAYS record/update the Pending Inquiry record so Admin sees the message in Admin Panel & DM Threads
+    if (isUserSender && isDmChannel) {
+      const isEthan = fullMsg.channelId.includes('ethan-ceo');
+      const isSupport = fullMsg.channelId.includes('admin-1') || fullMsg.channelId.includes('support');
+      const targetDesc = isEthan ? 'Ethan Chiu (CEO)' : isSupport ? 'Support Team' : 'Direct DM';
+      const customInqId = `inq-dm-${fullMsg.channelId}`;
+      const inqMessage = `💬 [Direct DM to ${targetDesc}]: ${fullMsg.text}`;
+
+      if (onSubmitInquiry) {
+        onSubmitInquiry(
+          fullMsg.senderName || effectiveUser.name,
+          fullMsg.senderEmail || effectiveUser.email,
+          inqMessage,
+          fullMsg.channelId,
+          customInqId
+        );
+      }
+
+      if (db) {
+        try {
+          const inqData = {
+            id: customInqId,
+            name: fullMsg.senderName || effectiveUser.name,
+            email: fullMsg.senderEmail || effectiveUser.email,
+            message: inqMessage,
+            timestamp: new Date().toISOString(),
+            status: 'Pending',
+            channelId: fullMsg.channelId
+          };
+          await setDoc(doc(db, 'inquiries', customInqId), cleanPayloadForFirestore(inqData));
+        } catch (e) {
+          console.warn("[Inquiry Record Sync Warning]", e);
+        }
+      }
+    }
 
     // When admin manually posts a reply in DM, resolve matching inquiry to clear red unread badge
     if (!isUserSender && (isAdmin || fullMsg.senderId === 'ethan-ceo' || fullMsg.senderId === 'admin-1')) {
@@ -704,7 +916,7 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
     let replyText = smartFallback.reply;
     const needsEscalation = smartFallback.escalate;
 
-    // If question IS relevant to website content: AI answers directly without escalating to admin
+    // If question IS relevant to website content: AI answers directly using Gemini API
     if (!needsEscalation) {
       try {
         const res = await fetch('/api/ai/community-reply', {
@@ -719,69 +931,9 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
       } catch (e) {
         console.warn("AI reply server endpoint fallback to local knowledge engine", e);
       }
-
-      // Question was answered by AI using website data: resolve any existing inquiry for this channel
-      const customInqId = `inq-dm-${channelId}`;
-      const matchingInq = inquiriesList.find(i => i.channelId === channelId || i.id === customInqId);
-      if (matchingInq && matchingInq.status === 'Pending' && onUpdateInquiry) {
-        onUpdateInquiry({
-          ...matchingInq,
-          status: 'Resolved',
-          message: `${matchingInq.message}\n\n🤖 [Handled by Fundora AI Agent]`
-        });
-      }
-      if (db) {
-        try {
-          await setDoc(doc(db, 'inquiries', customInqId), cleanPayloadForFirestore({
-            id: customInqId,
-            name: userMsg.senderName || effectiveUser.name,
-            email: userMsg.senderEmail || effectiveUser.email,
-            message: `Handled by Fundora AI Agent`,
-            timestamp: new Date().toISOString(),
-            status: 'Resolved',
-            channelId: channelId
-          }));
-        } catch (e) {
-          console.warn("[Inquiry Auto-Resolve Warning]", e);
-        }
-      }
     } else {
       // Question is IRRELEVANT to website content or requires manual executive review:
       replyText = `🤖 **Fundora AI Agent**: Assalam o Alaikum! Your question falls outside standard platform FAQs or requires personal executive attention. I have forwarded your direct message to CEO Ethan Chiu & Support!\n\nAn administrator will review your message and reply directly in this chat shortly.`;
-
-      // Create PENDING Inquiry record on Admin side so Admin sees red flag number
-      const isEthan = channelId.includes('ethan-ceo');
-      const isSupport = channelId.includes('admin-1') || channelId.includes('support');
-      const targetDesc = isEthan ? 'Ethan Chiu (CEO)' : isSupport ? 'Support Team' : 'Direct DM';
-      const customInqId = `inq-dm-${channelId}`;
-      const inqMessage = `💬 [Escalated DM to ${targetDesc}]: ${promptText}`;
-
-      if (onSubmitInquiry) {
-        onSubmitInquiry(
-          userMsg.senderName || effectiveUser.name,
-          userMsg.senderEmail || effectiveUser.email,
-          inqMessage,
-          channelId,
-          customInqId
-        );
-      }
-
-      if (db) {
-        try {
-          const inqData = {
-            id: customInqId,
-            name: userMsg.senderName || effectiveUser.name,
-            email: userMsg.senderEmail || effectiveUser.email,
-            message: inqMessage,
-            timestamp: new Date().toISOString(),
-            status: 'Pending',
-            channelId: channelId
-          };
-          await setDoc(doc(db, 'inquiries', customInqId), inqData);
-        } catch (e) {
-          console.warn("[Inquiry Escalation Sync Warning]", e);
-        }
-      }
     }
 
     // Deliver AI reply into the chat
@@ -1237,11 +1389,12 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
                                     {thread.userAvatar}
                                   </div>
                                   <div className="min-w-0">
-                                    <div className="text-xs font-semibold truncate flex items-center gap-1.5">
+                                    <div className="text-xs font-bold text-white truncate flex items-center gap-1.5">
                                       <span className="truncate">{thread.userName}</span>
-                                      <span className="text-[9px] text-slate-500">{thread.lastTimestamp}</span>
+                                      <span className="text-[9px] font-normal text-slate-400">{thread.lastTimestamp}</span>
                                     </div>
-                                    <div className="text-[10px] text-slate-400 truncate">{thread.lastMessageText}</div>
+                                    <div className="text-[10px] font-medium text-sky-400/90 truncate">{thread.userEmail}</div>
+                                    <div className="text-[10px] text-slate-400 truncate mt-0.5">{thread.lastMessageText}</div>
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-1.5 shrink-0">
