@@ -1860,16 +1860,25 @@ export default function App() {
     addSystemLog('Admin_Action', `Property listing ${projectId} deleted from catalog.`, 'Secure');
   };
 
-  const handleSubmitInquiry = async (name: string, email: string, message: string) => {
+  const handleSubmitInquiry = async (name: string, email: string, message: string, channelId?: string, customInqId?: string) => {
     const newInquiry: Inquiry = {
-      id: `inq-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      id: customInqId || `inq-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
       name,
       email,
       message,
       timestamp: new Date().toISOString(),
-      status: 'Pending'
+      status: 'Pending',
+      channelId
     };
-    setInquiriesList(prev => [newInquiry, ...prev]);
+    setInquiriesList(prev => {
+      const existingIdx = prev.findIndex(i => i.id === newInquiry.id || (channelId && i.channelId === channelId));
+      if (existingIdx >= 0) {
+        const updated = [...prev];
+        updated[existingIdx] = newInquiry;
+        return updated;
+      }
+      return [newInquiry, ...prev];
+    });
     if (isFirebaseEnabled()) {
       await saveInquiryToFirebase(newInquiry);
     }
@@ -2245,6 +2254,7 @@ export default function App() {
         simulatedMinute={simulatedMinute}
         investments={investmentsList}
         transactions={transactionsList}
+        inquiries={inquiriesList}
       />
 
       {currentPage === 'home' && (
@@ -2346,6 +2356,9 @@ export default function App() {
         <div className="w-full fixed top-[56px] bottom-[64px] sm:static sm:top-auto sm:bottom-auto sm:pt-20 sm:pb-6 px-0 sm:px-4 flex-1 flex flex-col min-h-0 overflow-hidden z-10">
           <CommunityHub 
             currentUser={activeUser} 
+            inquiriesList={inquiriesList}
+            onSubmitInquiry={handleSubmitInquiry}
+            onUpdateInquiry={handleUpdateInquiry}
             onNavigateToDeposit={() => {
               setCurrentPage('dashboard');
               setActiveDashboardTab('wallet');

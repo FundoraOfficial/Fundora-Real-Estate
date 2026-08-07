@@ -302,6 +302,7 @@ export interface Inquiry {
   message: string;
   timestamp: string;
   status: 'Pending' | 'Resolved';
+  channelId?: string;
 }
 
 // Community & AI Platform Types

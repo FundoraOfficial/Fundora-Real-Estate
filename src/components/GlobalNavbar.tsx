@@ -4,12 +4,12 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import { UserAccount, getAvatarBgClass, getInvestorTier, InvestmentRecord, Transaction } from '../types';
+import { UserAccount, getAvatarBgClass, getInvestorTier, InvestmentRecord, Transaction, Inquiry } from '../types';
 import { 
   Building, Menu, X, LogOut, Wallet, ShieldCheck, 
   TrendingUp, Percent, Users, Key, AppWindow, ArrowRight, LayoutDashboard, Coins,
   Plus, User, Receipt, HelpCircle, Sparkles, MessageSquare, Home, ArrowDownCircle, ArrowUpCircle,
-  Crown, Shield, History
+  Crown, Shield, History, Mail
 } from 'lucide-react';
 
 interface GlobalNavbarProps {
@@ -21,8 +21,8 @@ interface GlobalNavbarProps {
   activeTab?: 'overview' | 'properties' | 'wallet' | 'ledger' | 'claim' | 'referrals' | 'profile';
   setActiveTab?: (tab: 'overview' | 'properties' | 'wallet' | 'ledger' | 'claim' | 'referrals' | 'profile') => void;
   // Admin tab controls
-  activeAdminTab?: 'stats' | 'deposits' | 'withdrawals' | 'projects' | 'users' | 'security';
-  setActiveAdminTab?: (tab: 'stats' | 'deposits' | 'withdrawals' | 'projects' | 'users' | 'security') => void;
+  activeAdminTab?: 'stats' | 'deposits' | 'withdrawals' | 'projects' | 'users' | 'security' | 'inquiries';
+  setActiveAdminTab?: (tab: 'stats' | 'deposits' | 'withdrawals' | 'projects' | 'users' | 'security' | 'inquiries') => void;
   onSimulateDailyRollover?: () => void;
   // Scroll dispatcher helper
   setScrollToAnchor?: (anchor: string | null) => void;
@@ -32,6 +32,7 @@ interface GlobalNavbarProps {
   // Optional for dynamic badge/tier
   investments?: InvestmentRecord[];
   transactions?: Transaction[];
+  inquiries?: Inquiry[];
 }
 
 export default function GlobalNavbar({
@@ -48,7 +49,8 @@ export default function GlobalNavbar({
   simulatedHour = 21,
   simulatedMinute = 15,
   investments = [],
-  transactions = []
+  transactions = [],
+  inquiries = []
 }: GlobalNavbarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
@@ -97,7 +99,7 @@ export default function GlobalNavbar({
     }
   };
 
-  const handleAdminTabClick = (tab: 'stats' | 'deposits' | 'withdrawals' | 'projects' | 'users' | 'security') => {
+  const handleAdminTabClick = (tab: 'stats' | 'deposits' | 'withdrawals' | 'projects' | 'users' | 'security' | 'inquiries') => {
     setMobileMenuOpen(false);
     if (!activeUser) {
       onNavigate('login');
@@ -286,6 +288,20 @@ export default function GlobalNavbar({
                   >
                     <ShieldCheck className="w-3.5 h-3.5 text-red-500" />
                     <span>Threat Logs</span>
+                  </button>
+                  <button 
+                    onClick={() => handleAdminTabClick('inquiries')}
+                    className={`flex items-center gap-1 hover:text-red-400 transition-all uppercase tracking-wider text-xs relative ${
+                      currentPage === 'admin' && activeAdminTab === 'inquiries' ? 'text-red-400 font-extrabold border-b-2 border-red-500 pb-0.5' : 'text-slate-450'
+                    }`}
+                  >
+                    <Mail className="w-3.5 h-3.5 text-red-500" />
+                    <span>Inquiries / DMs</span>
+                    {inquiries.filter(i => i.status === 'Pending').length > 0 && (
+                      <span className="px-1.5 py-0.2 text-[9px] font-black bg-red-600 text-white rounded-full shadow-md shadow-red-500/50 animate-pulse">
+                        {inquiries.filter(i => i.status === 'Pending').length}
+                      </span>
+                    )}
                   </button>
                 </>
               ) : (

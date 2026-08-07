@@ -5,7 +5,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { RealEstateProject, Transaction, UserAccount, SecurityLog, ProjectCategory, SystemSettings, Inquiry } from '../types';
-import { db } from '../lib/firebase';
+import { db, cleanPayloadForFirestore } from '../lib/firebase';
 import { doc, setDoc } from 'firebase/firestore';
 import { 
   Shield, Users, Landmark, Coins, FileText, Check, X, ShieldAlert,
@@ -153,30 +153,33 @@ export default function AdminPanel({
     if (!replyText.trim() && !adminReplyAttachment) return;
     setReplyingStatus('Sending executive response...');
 
-    // Extract target DM channel ID if present
-    let channelId = 'dm-ethan-ceo';
-    if (inq.message.toLowerCase().includes('support')) {
-      channelId = 'dm-admin-1';
-    }
+    // Use target DM channel ID from inquiry record or default
+    const channelId = inq.channelId || (inq.message.toLowerCase().includes('support') ? 'dm-admin-1' : 'dm-ethan-ceo');
+
+    const replyMsg = {
+      id: `msg-reply-${Date.now()}`,
+      channelId,
+      senderId: 'ethan-ceo',
+      senderName: 'Ethan Chiu (CEO)',
+      senderEmail: 'ethan@fundora.one',
+      senderAvatar: '👨‍💼',
+      senderRole: 'CEO',
+      text: `👨‍💼 **Executive Reply from Ethan Chiu (CEO)**:\n${replyText || (adminReplyAttachment ? `[Attachment: ${adminReplyAttachment.name}]` : '')}`,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      createdAt: Date.now(),
+      attachmentUrl: adminReplyAttachment?.url,
+      attachmentType: adminReplyAttachment?.type,
+      attachmentName: adminReplyAttachment?.name
+    };
 
     try {
       if (db) {
-        const replyMsg = {
-          id: `msg-reply-${Date.now()}`,
-          channelId,
-          senderId: 'ethan-ceo',
-          senderName: 'Ethan Chiu (CEO)',
-          senderEmail: 'ethan@fundora.one',
-          senderAvatar: '👨‍💼',
-          senderRole: 'CEO',
-          text: `👨‍💼 **Executive Reply from Ethan Chiu (CEO)**:\n${replyText || (adminReplyAttachment ? `[Attachment: ${adminReplyAttachment.name}]` : '')}`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          createdAt: Date.now(),
-          attachmentUrl: adminReplyAttachment?.url,
-          attachmentType: adminReplyAttachment?.type,
-          attachmentName: adminReplyAttachment?.name
-        };
         await setDoc(doc(db, 'messages', replyMsg.id), replyMsg);
+        await setDoc(doc(db, 'inquiries', inq.id), cleanPayloadForFirestore({
+          ...inq,
+          status: 'Resolved',
+          message: `${inq.message}\n\n✅ [Executive Reply]: ${replyText || 'Attachment Sent'}`
+        }));
       }
 
       if (onUpdateInquiry) {
@@ -593,23 +596,28 @@ export default function AdminPanel({
       {/* Admin Tab selection bar */}
       <div className="bg-slate-900/40 px-2 border-b border-slate-900 flex overflow-x-auto selection:bg-rose-500/20">
         {[
-          { id: 'stats', label: '📊 System Stats' },
-          { id: 'deposits', label: `📥 Deposits (${pendingDeposits.length})` },
-          { id: 'withdrawals', label: `📤 Withdrawals (${pendingWithdrawals.length})` },
-          { id: 'projects', label: '🏢 Projects Desk' },
-          { id: 'users', label: '👥 User Ledgers' },
-          { id: 'security', label: '🛡️ Security Desk' },
-          { id: 'inquiries', label: `📬 Inquiries (${inquiries.filter(i => i.status === 'Pending').length})` },
-          { id: 'settings', label: '⚙️ Scan Gate' }
+          { id: 'stats', label: '📊 System Stats', badge: 0 },
+          { id: 'deposits', label: `📥 Deposits (${pendingDeposits.length})`, badge: 0 },
+          { id: 'withdrawals', label: `📤 Withdrawals (${pendingWithdrawals.length})`, badge: 0 },
+          { id: 'projects', label: '🏢 Projects Desk', badge: 0 },
+          { id: 'users', label: '👥 User Ledgers', badge: 0 },
+          { id: 'security', label: '🛡️ Security Desk', badge: 0 },
+          { id: 'inquiries', label: '📬 Inquiries & DMs', badge: inquiries.filter(i => i.status === 'Pending').length },
+          { id: 'settings', label: '⚙️ Scan Gate', badge: 0 }
         ].map((tab) => (
           <button
             key={tab.id}
             onClick={() => setAdminTab(tab.id as any)}
-            className={`py-3 px-3 border-b-2 text-[10px] font-mono tracking-wider font-extrabold uppercase whitespace-nowrap transition-colors ${
+            className={`py-3 px-3 border-b-2 text-[10px] font-mono tracking-wider font-extrabold uppercase whitespace-nowrap transition-colors flex items-center gap-1.5 ${
               adminTab === tab.id ? 'border-red-500 text-red-400' : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
-            {tab.label}
+            <span>{tab.label}</span>
+            {tab.badge > 0 && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-600 text-white shadow-md shadow-red-500/50 animate-pulse">
+                {tab.badge}
+              </span>
+            )}
           </button>
         ))}
       </div>

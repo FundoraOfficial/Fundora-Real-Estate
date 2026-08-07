@@ -50,10 +50,11 @@ import {
   CommunityMessage, 
   PollData, 
   MemberRole, 
-  CommunityJoinRequest 
+  CommunityJoinRequest,
+  Inquiry
 } from '../types';
 import { generateSmartFundoraAnswer } from '../lib/aiKnowledgeEngine';
-import { db } from '../lib/firebase';
+import { db, cleanPayloadForFirestore } from '../lib/firebase';
 import { 
   collection, 
   addDoc, 
@@ -71,6 +72,9 @@ interface CommunityHubProps {
   currentUser: UserAccount;
   initialChannelId?: string;
   onNavigateToDeposit?: () => void;
+  inquiriesList?: Inquiry[];
+  onSubmitInquiry?: (name: string, email: string, message: string, channelId?: string, customInqId?: string) => Promise<void> | void;
+  onUpdateInquiry?: (inquiry: Inquiry) => Promise<void> | void;
 }
 
 // Initial Default Channels
@@ -151,7 +155,10 @@ const MOCK_TRUSTEES = [
 export const CommunityHub: React.FC<CommunityHubProps> = ({ 
   currentUser, 
   initialChannelId = 'announcements',
-  onNavigateToDeposit 
+  onNavigateToDeposit,
+  inquiriesList = [],
+  onSubmitInquiry,
+  onUpdateInquiry
 }) => {
   const [channels, setChannels] = useState<CommunityChannel[]>(DEFAULT_CHANNELS);
   const [activeChannelId, setActiveChannelId] = useState<string>(initialChannelId || 'announcements');
@@ -292,6 +299,7 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
       lastTimestamp: string;
       lastCreatedAt: number;
       messageCount: number;
+      hasPendingInquiry: boolean;
     }> = [];
 
     grouped.forEach((msgList, chanId) => {
@@ -326,6 +334,9 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
         userName = 'General Support Channel';
       }
 
+      const matchingInq = inquiriesList.find(i => (i.channelId === chanId || i.id === `inq-dm-${chanId}`) && i.status === 'Pending');
+      const lastSenderIsUser = lastMsg && lastMsg.senderId !== 'ethan-ceo' && lastMsg.senderId !== 'admin-1' && lastMsg.senderId !== 'ai-assistant';
+
       threads.push({
         channelId: chanId,
         targetId,
@@ -338,12 +349,13 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
         lastMessageText: lastMsg ? lastMsg.text : 'Direct conversation started',
         lastTimestamp: lastMsg ? lastMsg.timestamp : 'Just now',
         lastCreatedAt: lastMsg ? (lastMsg.createdAt || Date.now()) : Date.now(),
-        messageCount: msgList.length
+        messageCount: msgList.length,
+        hasPendingInquiry: !!matchingInq || !!lastSenderIsUser
       });
     });
 
     return threads.sort((a, b) => b.lastCreatedAt - a.lastCreatedAt);
-  }, [allDmMessages, messages]);
+  }, [allDmMessages, messages, inquiriesList]);
 
   const startDirectMessage = (trustee: typeof MOCK_TRUSTEES[0]) => {
     let dmChannelId = `dm-${trustee.id}`;
@@ -644,106 +656,167 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
       }
     }
 
-    // 4. Sync as an Inquiry record in Firestore so Admin Panel sees all user direct messages
+    // 4. Handle DM inquiry status and AI smart response
     const isUserSender = fullMsg.senderId !== 'ethan-ceo' && fullMsg.senderId !== 'admin-1' && fullMsg.senderId !== 'ai-assistant';
-    if (isUserSender && db) {
-      try {
-        const inqId = `inq-dm-${fullMsg.id}`;
-        const isEthan = fullMsg.channelId.includes('ethan-ceo');
-        const isSupport = fullMsg.channelId.includes('admin-1') || fullMsg.channelId.includes('support');
-        const targetDesc = isEthan ? 'Ethan Chiu (CEO)' : isSupport ? 'Support Team' : 'Community DM';
+    const isDmChannel = fullMsg.channelId.startsWith('dm-');
 
-        const inqData = {
-          id: inqId,
-          name: fullMsg.senderName || effectiveUser.name,
-          email: fullMsg.senderEmail || effectiveUser.email,
-          message: `💬 [Direct DM to ${targetDesc}]: ${fullMsg.text}`,
-          timestamp: new Date().toISOString(),
-          status: 'Pending',
-          channelId: fullMsg.channelId
-        };
-        await setDoc(doc(db, 'inquiries', inqId), inqData);
-      } catch (e) {
-        console.warn("[Inquiry DM Sync Warning]", e);
+    // When admin manually posts a reply in DM, resolve matching inquiry to clear red unread badge
+    if (!isUserSender && (isAdmin || fullMsg.senderId === 'ethan-ceo' || fullMsg.senderId === 'admin-1')) {
+      const customInqId = `inq-dm-${fullMsg.channelId}`;
+      const matchingInq = inquiriesList.find(i => i.channelId === fullMsg.channelId || i.id === customInqId);
+      if (matchingInq && onUpdateInquiry) {
+        onUpdateInquiry({
+          ...matchingInq,
+          status: 'Resolved',
+          message: `${matchingInq.message}\n\n✅ [Executive Reply]: ${fullMsg.text}`
+        });
+      }
+      if (db) {
+        try {
+          await setDoc(doc(db, 'inquiries', customInqId), cleanPayloadForFirestore({
+            id: customInqId,
+            name: fullMsg.senderName || 'Community Member',
+            email: fullMsg.senderEmail || 'user@fundora.one',
+            message: `Resolved via Executive DM`,
+            timestamp: new Date().toISOString(),
+            status: 'Resolved',
+            channelId: fullMsg.channelId
+          }));
+        } catch (e) {
+          console.warn("[Inquiry Resolve Warning]", e);
+        }
       }
     }
 
-    const isAiDm = fullMsg.channelId.includes('ai-assistant') || fullMsg.channelId.includes('ai-bot');
-
-    // Auto-reply if message is sent in DM to AI Agent or if @AI is tagged in a channel
-    if (isAiDm && isUserSender) {
-      triggerAiCommunityReply(fullMsg.text, fullMsg.channelId);
-    } else if (isUserSender && (fullMsg.text.includes('@AI') || fullMsg.text.toLowerCase().includes('help') || fullMsg.text.toLowerCase().includes('yield') || fullMsg.text.toLowerCase().includes('deposit'))) {
-      triggerAiCommunityReply(fullMsg.text, fullMsg.channelId);
-    }
-
-    // Executive auto-response from Ethan Chiu if a member sends a DM to Ethan Chiu
-    if (fullMsg.channelId.includes('ethan-ceo') && fullMsg.senderId !== 'ethan-ceo' && !isAdmin) {
-      setTimeout(async () => {
-        const ceoMsg: CommunityMessage = {
-          id: `ethan-reply-${Date.now()}`,
-          channelId: fullMsg.channelId,
-          senderId: 'ethan-ceo',
-          senderName: 'Ethan Chiu',
-          senderEmail: 'ethan@fundora.one',
-          senderAvatar: '👨‍💼',
-          senderRole: 'CEO',
-          text: "👨‍💼 **Ethan Chiu (CEO)**: Assalam o Alaikum! Thank you for reaching out directly. I have received your message regarding Fundora property investments. My executive office or I will review and reply shortly!",
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          createdAt: Date.now()
-        };
-        await saveMessage(ceoMsg);
-      }, 1500);
+    // Auto-reply with AI agent for user questions in DMs or when tagging @AI
+    if (isUserSender && (isDmChannel || fullMsg.text.includes('@AI'))) {
+      triggerAiCommunityReply(fullMsg.text, fullMsg.channelId, fullMsg);
     }
   };
 
-  const triggerAiCommunityReply = async (promptText: string, targetChannelId?: string) => {
+  const triggerAiCommunityReply = async (promptText: string, targetChannelId: string, userMsg: CommunityMessage) => {
     const channelId = targetChannelId || activeChannelId;
     const chanName = channels.find(c => c.id === channelId)?.name || 'Direct Message';
-    try {
-      const res = await fetch('/api/ai/community-reply', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ promptText, channelName: chanName })
-      });
-      const data = await res.json();
-      const smartFallback = generateSmartFundoraAnswer(promptText, 'en', chanName);
-      const replyText = (data.success && data.reply) ? data.reply : smartFallback.reply;
-      
-      setTimeout(async () => {
-        const aiMsg: CommunityMessage = {
-          id: `ai-msg-${Date.now()}`,
-          channelId: channelId,
-          senderId: 'ai-assistant',
-          senderName: 'Fundora AI Agent',
-          senderEmail: 'ai@fundora.one',
-          senderAvatar: '🤖',
-          senderRole: 'Admin',
-          text: replyText,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          isAiGenerated: true
-        };
-        await saveMessage(aiMsg);
-      }, 1000);
-    } catch (e) {
-      console.warn("AI reply error", e);
-      const smartFallback = generateSmartFundoraAnswer(promptText, 'en', chanName);
-      setTimeout(async () => {
-        const aiMsg: CommunityMessage = {
-          id: `ai-msg-${Date.now()}`,
-          channelId: channelId,
-          senderId: 'ai-assistant',
-          senderName: 'Fundora AI Agent',
-          senderEmail: 'ai@fundora.one',
-          senderAvatar: '🤖',
-          senderRole: 'Admin',
-          text: smartFallback.reply,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          isAiGenerated: true
-        };
-        await saveMessage(aiMsg);
-      }, 1000);
+
+    // 1. Evaluate smart website knowledge engine
+    const smartFallback = generateSmartFundoraAnswer(promptText, 'en', chanName);
+
+    let replyText = smartFallback.reply;
+    const needsEscalation = smartFallback.escalate;
+
+    // If question IS relevant to website content: AI answers directly without escalating to admin
+    if (!needsEscalation) {
+      try {
+        const res = await fetch('/api/ai/community-reply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ promptText, channelName: chanName })
+        });
+        const data = await res.json();
+        if (data.success && data.reply) {
+          replyText = data.reply;
+        }
+      } catch (e) {
+        console.warn("AI reply server endpoint fallback to local knowledge engine", e);
+      }
+
+      // Question was answered by AI using website data: resolve any existing inquiry for this channel
+      const customInqId = `inq-dm-${channelId}`;
+      const matchingInq = inquiriesList.find(i => i.channelId === channelId || i.id === customInqId);
+      if (matchingInq && matchingInq.status === 'Pending' && onUpdateInquiry) {
+        onUpdateInquiry({
+          ...matchingInq,
+          status: 'Resolved',
+          message: `${matchingInq.message}\n\n🤖 [Handled by Fundora AI Agent]`
+        });
+      }
+      if (db) {
+        try {
+          await setDoc(doc(db, 'inquiries', customInqId), cleanPayloadForFirestore({
+            id: customInqId,
+            name: userMsg.senderName || effectiveUser.name,
+            email: userMsg.senderEmail || effectiveUser.email,
+            message: `Handled by Fundora AI Agent`,
+            timestamp: new Date().toISOString(),
+            status: 'Resolved',
+            channelId: channelId
+          }));
+        } catch (e) {
+          console.warn("[Inquiry Auto-Resolve Warning]", e);
+        }
+      }
+    } else {
+      // Question is IRRELEVANT to website content or requires manual executive review:
+      replyText = `🤖 **Fundora AI Agent**: Assalam o Alaikum! Your question falls outside standard platform FAQs or requires personal executive attention. I have forwarded your direct message to CEO Ethan Chiu & Support!\n\nAn administrator will review your message and reply directly in this chat shortly.`;
+
+      // Create PENDING Inquiry record on Admin side so Admin sees red flag number
+      const isEthan = channelId.includes('ethan-ceo');
+      const isSupport = channelId.includes('admin-1') || channelId.includes('support');
+      const targetDesc = isEthan ? 'Ethan Chiu (CEO)' : isSupport ? 'Support Team' : 'Direct DM';
+      const customInqId = `inq-dm-${channelId}`;
+      const inqMessage = `💬 [Escalated DM to ${targetDesc}]: ${promptText}`;
+
+      if (onSubmitInquiry) {
+        onSubmitInquiry(
+          userMsg.senderName || effectiveUser.name,
+          userMsg.senderEmail || effectiveUser.email,
+          inqMessage,
+          channelId,
+          customInqId
+        );
+      }
+
+      if (db) {
+        try {
+          const inqData = {
+            id: customInqId,
+            name: userMsg.senderName || effectiveUser.name,
+            email: userMsg.senderEmail || effectiveUser.email,
+            message: inqMessage,
+            timestamp: new Date().toISOString(),
+            status: 'Pending',
+            channelId: channelId
+          };
+          await setDoc(doc(db, 'inquiries', customInqId), inqData);
+        } catch (e) {
+          console.warn("[Inquiry Escalation Sync Warning]", e);
+        }
+      }
     }
+
+    // Deliver AI reply into the chat
+    setTimeout(async () => {
+      const aiMsg: CommunityMessage = {
+        id: `ai-msg-${Date.now()}`,
+        channelId: channelId,
+        senderId: 'ai-assistant',
+        senderName: 'Fundora AI Agent',
+        senderEmail: 'ai@fundora.one',
+        senderAvatar: '🤖',
+        senderRole: 'Admin',
+        text: replyText,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        createdAt: Date.now(),
+        isAiGenerated: true
+      };
+
+      if (!INITIAL_MESSAGES[channelId]) INITIAL_MESSAGES[channelId] = [];
+      if (!INITIAL_MESSAGES[channelId].some(m => m.id === aiMsg.id)) {
+        INITIAL_MESSAGES[channelId].push(aiMsg);
+      }
+      setMessages(prev => {
+        if (prev.some(m => m.id === aiMsg.id)) return prev;
+        const updated = [...prev, aiMsg];
+        return updated.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      });
+      if (db) {
+        try {
+          await setDoc(doc(db, 'messages', aiMsg.id), aiMsg);
+        } catch (err) {
+          console.warn("[Firestore AI Save Warning]", err);
+        }
+      }
+    }, 600);
   };
 
   const handleSendMessage = async (e?: React.FormEvent) => {
@@ -1171,9 +1244,16 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
                                     <div className="text-[10px] text-slate-400 truncate">{thread.lastMessageText}</div>
                                   </div>
                                 </div>
-                                <span className="text-[9px] font-semibold text-amber-400 px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800 shrink-0">
-                                  {thread.messageCount} msgs
-                                </span>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {thread.hasPendingInquiry && (
+                                    <span className="text-[9px] font-extrabold text-white px-2 py-0.5 rounded-full bg-red-600 border border-red-400 shadow-md shadow-red-600/50 animate-pulse flex items-center gap-0.5">
+                                      🚩 New
+                                    </span>
+                                  )}
+                                  <span className="text-[9px] font-semibold text-amber-400 px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800">
+                                    {thread.messageCount} msgs
+                                  </span>
+                                </div>
                               </button>
                             );
                           })

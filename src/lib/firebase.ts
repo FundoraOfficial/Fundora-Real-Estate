@@ -80,4 +80,18 @@ try {
   console.error(`${platformTag} Critical error during Firebase initialization:`, error);
 }
 
+export function cleanPayloadForFirestore(obj: any): any {
+  if (obj === null || obj === undefined) return null;
+  if (typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(cleanPayloadForFirestore);
+  const cleaned: Record<string, any> = {};
+  Object.keys(obj).forEach(key => {
+    const val = obj[key];
+    if (val !== undefined) {
+      cleaned[key] = cleanPayloadForFirestore(val);
+    }
+  });
+  return cleaned;
+}
+
 export { app, db, auth };
