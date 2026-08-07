@@ -5,10 +5,12 @@
 
 import React, { useState, useMemo } from 'react';
 import { RealEstateProject, Transaction, UserAccount, SecurityLog, ProjectCategory, SystemSettings, Inquiry } from '../types';
+import { db } from '../lib/firebase';
+import { doc, setDoc } from 'firebase/firestore';
 import { 
   Shield, Users, Landmark, Coins, FileText, Check, X, ShieldAlert,
   ArrowDownCircle, ArrowUpCircle, Plus, Eye, RefreshCw, Key, AlertOctagon, BarChart2,
-  Unlock, Minus, Wallet, User, Lock, Mail, MessageSquare, CheckCircle, XCircle, Download, Ban, CheckCircle2, Power, Trash2, Copy
+  Unlock, Minus, Wallet, User, Lock, Mail, MessageSquare, CheckCircle, XCircle, Download, Ban, CheckCircle2, Power, Trash2, Copy, Paperclip
 } from 'lucide-react';
 
 interface AdminPanelProps {
@@ -109,6 +111,92 @@ export default function AdminPanel({
   const [adminConfirmPassword, setAdminConfirmPassword] = useState('');
   const [adminPassError, setAdminPassError] = useState('');
   const [adminPassSuccess, setAdminPassSuccess] = useState('');
+
+  // Executive Reply State for Inquiries & Direct Messages
+  const [replyingInquiryId, setReplyingInquiryId] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState<string>('');
+  const [replyingStatus, setReplyingStatus] = useState<string | null>(null);
+  const [adminReplyAttachment, setAdminReplyAttachment] = useState<{
+    url: string;
+    name: string;
+    type: 'image' | 'video' | 'document';
+    size?: string;
+  } | null>(null);
+  const adminFileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleAdminFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 10 * 1024 * 1024) {
+      alert("File size exceeds 10MB limit.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onloadend = () => {
+      const base64Data = reader.result as string;
+      let type: 'image' | 'video' | 'document' = 'document';
+      if (file.type.startsWith('image/')) type = 'image';
+      else if (file.type.startsWith('video/')) type = 'video';
+
+      setAdminReplyAttachment({
+        url: base64Data,
+        name: file.name,
+        type
+      });
+    };
+  };
+
+  const handleSendAdminReply = async (inq: Inquiry) => {
+    if (!replyText.trim() && !adminReplyAttachment) return;
+    setReplyingStatus('Sending executive response...');
+
+    // Extract target DM channel ID if present
+    let channelId = 'dm-ethan-ceo';
+    if (inq.message.toLowerCase().includes('support')) {
+      channelId = 'dm-admin-1';
+    }
+
+    try {
+      if (db) {
+        const replyMsg = {
+          id: `msg-reply-${Date.now()}`,
+          channelId,
+          senderId: 'ethan-ceo',
+          senderName: 'Ethan Chiu (CEO)',
+          senderEmail: 'ethan@fundora.one',
+          senderAvatar: '👨‍💼',
+          senderRole: 'CEO',
+          text: `👨‍💼 **Executive Reply from Ethan Chiu (CEO)**:\n${replyText || (adminReplyAttachment ? `[Attachment: ${adminReplyAttachment.name}]` : '')}`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          createdAt: Date.now(),
+          attachmentUrl: adminReplyAttachment?.url,
+          attachmentType: adminReplyAttachment?.type,
+          attachmentName: adminReplyAttachment?.name
+        };
+        await setDoc(doc(db, 'messages', replyMsg.id), replyMsg);
+      }
+
+      if (onUpdateInquiry) {
+        onUpdateInquiry({
+          ...inq,
+          status: 'Resolved',
+          message: `${inq.message}\n\n✅ [Executive Reply]: ${replyText || 'Attachment Sent'}`
+        });
+      }
+
+      setReplyingInquiryId(null);
+      setReplyText('');
+      setAdminReplyAttachment(null);
+      setReplyingStatus(null);
+      if (adminFileInputRef.current) adminFileInputRef.current.value = '';
+    } catch (err) {
+      console.warn("Failed to dispatch admin reply", err);
+      setReplyingStatus('Failed to dispatch. Please try again.');
+    }
+  };
 
   const handleAdminChangePassword = (e: React.FormEvent) => {
     e.preventDefault();
@@ -2848,14 +2936,16 @@ export default function AdminPanel({
 
 
 
-        {/* ==================== TAB 8: REAL-TIME INQUIRIES DESK ==================== */}
+        {/* ==================== TAB 8: REAL-TIME INQUIRIES & DIRECT MESSAGES ==================== */}
         {adminTab === 'inquiries' && (
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
             <div className="border-b border-slate-800 pb-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
               <div>
-                <h3 className="text-sm font-mono font-bold uppercase tracking-wider text-red-400">📬 Real-Time Customer Inquiries</h3>
+                <h3 className="text-sm font-mono font-bold uppercase tracking-wider text-red-400 flex items-center gap-2">
+                  <span>📬 Real-Time Customer Inquiries & Direct Messages</span>
+                </h3>
                 <p className="text-[10px] text-slate-400 font-sans mt-1">
-                  View and manage real-time contact requests, pre-sale questions, and customer support tickets submitted on the homepage.
+                  View and manage real-time contact requests, pre-sale inquiries, and direct messages sent to CEO Ethan Chiu or Support.
                 </p>
               </div>
               <div className="flex items-center gap-2 font-mono text-[9px] text-slate-400 bg-slate-950 p-1.5 rounded-lg border border-slate-850">
@@ -2870,9 +2960,9 @@ export default function AdminPanel({
                 <div className="w-12 h-12 rounded-full bg-slate-950 flex items-center justify-center mx-auto border border-slate-800">
                   <Mail className="w-5 h-5 text-slate-500" />
                 </div>
-                <h4 className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider">No Inquiries Found</h4>
+                <h4 className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider">No Inquiries or Messages Found</h4>
                 <p className="text-[10px] text-slate-500 max-w-xs mx-auto">
-                  When visitors submit the "Send Quick Inquiry" form on the main homepage, they will appear here in real-time.
+                  When visitors submit the "Send Quick Inquiry" form or send direct messages in Community Hub, they will appear here in real-time.
                 </p>
               </div>
             ) : (
@@ -2888,67 +2978,189 @@ export default function AdminPanel({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60 font-mono text-xs">
-                    {inquiries.map((inq) => (
-                      <tr key={inq.id} className="hover:bg-slate-950/20 transition-colors">
-                        <td className="py-3.5 px-4 space-y-1">
-                          <div className="font-sans font-bold text-white text-xs">{inq.name}</div>
-                          <div className="text-[10px] text-slate-400 flex items-center gap-1">
-                            <Mail className="w-3 h-3 text-slate-500 shrink-0" />
-                            <a href={`mailto:${inq.email}`} className="hover:text-amber-400 transition-colors">{inq.email}</a>
-                          </div>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <p className="text-[11px] text-slate-300 font-sans max-w-md break-words whitespace-pre-wrap leading-relaxed">
-                            {inq.message}
-                          </p>
-                        </td>
-                        <td className="py-3.5 px-4 text-[10px] text-slate-450">
-                          {inq.timestamp ? new Date(inq.timestamp).toLocaleString() : 'N/A'}
-                        </td>
-                        <td className="py-3.5 px-4 text-center">
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider ${
-                            inq.status === 'Resolved' 
-                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
-                              : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                          }`}>
-                            <span className={`w-1 h-1 rounded-full ${inq.status === 'Resolved' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-                            {inq.status}
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            {inq.status === 'Pending' ? (
-                              <button
-                                onClick={() => onUpdateInquiry && onUpdateInquiry({ ...inq, status: 'Resolved' })}
-                                className="px-2 py-1 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-[9px] uppercase font-bold tracking-wider border border-emerald-500/25 transition-all cursor-pointer flex items-center gap-1"
-                                title="Mark as Resolved"
-                              >
-                                <Check className="w-3.5 h-3.5" />
-                                <span>Resolve</span>
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => onUpdateInquiry && onUpdateInquiry({ ...inq, status: 'Pending' })}
-                                className="px-2 py-1 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-[9px] uppercase font-bold tracking-wider border border-amber-500/25 transition-all cursor-pointer flex items-center gap-1"
-                                title="Mark as Pending"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                                <span>Re-open</span>
-                              </button>
-                            )}
-                            <button
-                              onClick={() => {
-                                onDeleteInquiry && onDeleteInquiry(inq.id);
-                              }}
-                              className="px-2 py-1 rounded bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 text-[9px] uppercase font-bold tracking-wider border border-rose-500/25 transition-all cursor-pointer"
-                              title="Delete permanently"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                    {inquiries.map((inq) => {
+                      const isDm = inq.message.toLowerCase().includes('[direct dm') || inq.message.toLowerCase().includes('[dm:');
+                      const isReplying = replyingInquiryId === inq.id;
+
+                      return (
+                        <React.Fragment key={inq.id}>
+                          <tr className="hover:bg-slate-950/20 transition-colors">
+                            <td className="py-3.5 px-4 space-y-1">
+                              <div className="font-sans font-bold text-white text-xs">{inq.name}</div>
+                              <div className="text-[10px] text-slate-400 flex items-center gap-1">
+                                <Mail className="w-3 h-3 text-slate-500 shrink-0" />
+                                <a href={`mailto:${inq.email}`} className="hover:text-amber-400 transition-colors">{inq.email}</a>
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-4 space-y-1.5">
+                              <div>
+                                {isDm ? (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                                    💬 DIRECT DM
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                                    📬 WEB INQUIRY
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-slate-300 font-sans max-w-md break-words whitespace-pre-wrap leading-relaxed">
+                                {inq.message}
+                              </p>
+                            </td>
+                            <td className="py-3.5 px-4 text-[10px] text-slate-450">
+                              {inq.timestamp ? new Date(inq.timestamp).toLocaleString() : 'N/A'}
+                            </td>
+                            <td className="py-3.5 px-4 text-center">
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider ${
+                                inq.status === 'Resolved' 
+                                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                                  : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                              }`}>
+                                <span className={`w-1 h-1 rounded-full ${inq.status === 'Resolved' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                                {inq.status}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  onClick={() => {
+                                    if (isReplying) {
+                                      setReplyingInquiryId(null);
+                                    } else {
+                                      setReplyingInquiryId(inq.id);
+                                      setReplyText('');
+                                    }
+                                  }}
+                                  className="px-2 py-1 rounded bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 text-[9px] uppercase font-bold tracking-wider border border-sky-500/25 transition-all cursor-pointer flex items-center gap-1"
+                                  title="Send Executive DM Reply"
+                                >
+                                  <MessageSquare className="w-3.5 h-3.5" />
+                                  <span>Reply</span>
+                                </button>
+                                {inq.status === 'Pending' ? (
+                                  <button
+                                    onClick={() => onUpdateInquiry && onUpdateInquiry({ ...inq, status: 'Resolved' })}
+                                    className="px-2 py-1 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-[9px] uppercase font-bold tracking-wider border border-emerald-500/25 transition-all cursor-pointer flex items-center gap-1"
+                                    title="Mark as Resolved"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                    <span>Resolve</span>
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => onUpdateInquiry && onUpdateInquiry({ ...inq, status: 'Pending' })}
+                                    className="px-2 py-1 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-[9px] uppercase font-bold tracking-wider border border-amber-500/25 transition-all cursor-pointer flex items-center gap-1"
+                                    title="Mark as Pending"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                    <span>Re-open</span>
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => {
+                                    onDeleteInquiry && onDeleteInquiry(inq.id);
+                                  }}
+                                  className="px-2 py-1 rounded bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 text-[9px] uppercase font-bold tracking-wider border border-rose-500/25 transition-all cursor-pointer"
+                                  title="Delete permanently"
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+
+                          {isReplying && (
+                            <tr className="bg-slate-950/60 border-b border-sky-500/30">
+                              <td colSpan={5} className="p-4">
+                                <div className="space-y-2 max-w-xl">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-mono font-bold text-sky-400 uppercase tracking-wider flex items-center gap-1">
+                                      <MessageSquare className="w-3 h-3" />
+                                      Reply as Ethan Chiu (CEO) / Admin to {inq.name}
+                                    </span>
+                                    <button
+                                      onClick={() => setReplyingInquiryId(null)}
+                                      className="text-slate-400 hover:text-white text-xs"
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
+                                  <textarea
+                                    value={replyText}
+                                    onChange={(e) => setReplyText(e.target.value)}
+                                    placeholder="Type official executive message reply..."
+                                    rows={3}
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-sky-500"
+                                  />
+
+                                  {/* Attachment Preview Chip */}
+                                  {adminReplyAttachment && (
+                                    <div className="p-2 rounded-xl bg-slate-900 border border-sky-500/40 flex items-center justify-between text-xs text-slate-200">
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        <FileText className="w-4 h-4 text-sky-400 shrink-0" />
+                                        <span className="font-bold text-white truncate text-xs">{adminReplyAttachment.name}</span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setAdminReplyAttachment(null);
+                                          if (adminFileInputRef.current) adminFileInputRef.current.value = '';
+                                        }}
+                                        className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-rose-400"
+                                      >
+                                        <X className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  )}
+
+                                  {replyingStatus && (
+                                    <div className="text-[10px] font-mono text-amber-400">{replyingStatus}</div>
+                                  )}
+
+                                  <div className="flex items-center justify-between gap-2 pt-1">
+                                    <div>
+                                      <input
+                                        type="file"
+                                        ref={adminFileInputRef}
+                                        onChange={handleAdminFileSelect}
+                                        className="hidden"
+                                        accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.zip"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => adminFileInputRef.current?.click()}
+                                        className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-bold flex items-center gap-1 border border-slate-700 transition cursor-pointer"
+                                        title="Attach Document or Image"
+                                      >
+                                        <Paperclip className="w-3.5 h-3.5" />
+                                        <span>Attach File</span>
+                                      </button>
+                                    </div>
+
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        onClick={() => setReplyingInquiryId(null)}
+                                        className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold"
+                                      >
+                                        Cancel
+                                      </button>
+                                      <button
+                                        onClick={() => handleSendAdminReply(inq)}
+                                        disabled={!replyText.trim() && !adminReplyAttachment}
+                                        className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white text-xs font-bold shadow-md cursor-pointer disabled:opacity-50"
+                                      >
+                                        Send Executive Reply
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Bot, 
   Send, 
@@ -16,10 +16,13 @@ import {
   MessageSquare,
   Users,
   GripVertical,
-  Move
+  Move,
+  Bell
 } from 'lucide-react';
 import { UserAccount } from '../types';
 import { generateSmartFundoraAnswer } from '../lib/aiKnowledgeEngine';
+import { db } from '../lib/firebase';
+import { collection, query, onSnapshot } from 'firebase/firestore';
 
 interface FloatingAiAssistantProps {
   currentUser?: UserAccount | null;
@@ -74,6 +77,114 @@ export const FloatingAiAssistant: React.FC<FloatingAiAssistantProps> = ({
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     }
   ]);
+
+  // Determine if a real user account is actively signed in
+  const isUserAuthenticated = useMemo(() => {
+    if (!currentUser) return false;
+    if (!currentUser.id || currentUser.id === 'user-1' || currentUser.id === 'user-demo') return false;
+    if (currentUser.email === 'investor@example.com' || currentUser.email === 'user@fundora.one') return false;
+    if (currentUser.name === 'Active Investor' || currentUser.name === 'Alex Mercer') return false;
+    return true;
+  }, [currentUser]);
+
+  // Determine effective user ID for isolating announcements and direct message notifications
+  const effectiveUserId = useMemo(() => {
+    if (isUserAuthenticated && currentUser?.id) {
+      return currentUser.id;
+    }
+    let guestId = localStorage.getItem('fundora_guest_dm_id');
+    if (!guestId) {
+      const rand = Math.floor(1000 + Math.random() * 9000);
+      guestId = `guest-${rand}`;
+      localStorage.setItem('fundora_guest_dm_id', guestId);
+    }
+    return guestId;
+  }, [currentUser, isUserAuthenticated]);
+
+  const [unreadMessages, setUnreadMessages] = useState<Array<{ id: string; channelId: string; senderName: string; text: string; timestamp: string }>>([]);
+  
+  const [readMsgIds, setReadMsgIds] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem(`fundora_read_msg_ids_${effectiveUserId}`);
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  const markMessagesAsRead = (idsToMark?: string[]) => {
+    setReadMsgIds(prev => {
+      const updated = new Set(prev);
+      if (idsToMark && idsToMark.length > 0) {
+        idsToMark.forEach(id => updated.add(id));
+      } else {
+        unreadMessages.forEach(m => updated.add(m.id));
+      }
+      try {
+        localStorage.setItem(`fundora_read_msg_ids_${effectiveUserId}`, JSON.stringify(Array.from(updated)));
+      } catch (e) {
+        console.warn("Could not save read msg IDs", e);
+      }
+      return updated;
+    });
+  };
+
+  // Real-time Firestore subscription to messages for unread announcements and DMs
+  useEffect(() => {
+    if (!db) return;
+    try {
+      const q = query(collection(db, 'messages'));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const incomingUnread: Array<{ id: string; channelId: string; senderName: string; text: string; timestamp: string }> = [];
+        
+        snapshot.forEach(docSnap => {
+          const data = docSnap.data() as any;
+          const msgId = docSnap.id;
+
+          // Do not count messages sent by the user themselves
+          if (data.senderId === effectiveUserId || (currentUser?.id && data.senderId === currentUser.id)) return;
+
+          const chan = data.channelId || '';
+
+          // 1. Official Announcements channel (applies to both guest viewers and signed-in users)
+          const isAnnouncement = chan === 'announcements';
+
+          // 2. Direct Messages (ONLY applies when a real user account is signed in)
+          const isUserDm = isUserAuthenticated && chan.startsWith('dm-') && (
+            chan.includes(effectiveUserId) ||
+            (currentUser?.id && chan.includes(currentUser.id))
+          );
+
+          if (isAnnouncement || isUserDm) {
+            if (!readMsgIds.has(msgId)) {
+              incomingUnread.push({
+                id: msgId,
+                channelId: chan,
+                senderName: data.senderName || (isAnnouncement ? 'Fundora Announcement' : 'Support / Admin'),
+                text: data.text || 'New message received',
+                timestamp: data.timestamp || 'Just now'
+              });
+            }
+          }
+        });
+
+        setUnreadMessages(incomingUnread);
+      }, (err) => {
+        console.warn("[Floating Bot Message Snapshot Warning]", err);
+      });
+
+      return () => unsubscribe();
+    } catch (e) {
+      console.warn("Snapshot subscription error", e);
+    }
+  }, [effectiveUserId, currentUser, isUserAuthenticated, readMsgIds]);
+
+  // Automatically mark as read if user is currently on the Community page
+  useEffect(() => {
+    if (isCommunityPage && unreadMessages.length > 0) {
+      markMessagesAsRead(unreadMessages.map(m => m.id));
+    }
+  }, [isCommunityPage, unreadMessages]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -222,7 +333,13 @@ export const FloatingAiAssistant: React.FC<FloatingAiAssistantProps> = ({
             aria-label="Fundora AI Concierge"
           >
             <Bot className="w-6 h-6 text-white group-hover:rotate-12 transition-transform duration-300" />
-            <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-emerald-400 rounded-full border-2 border-slate-900 shadow-sm animate-pulse" />
+            {unreadMessages.length > 0 ? (
+              <span className="absolute -top-1.5 -right-1.5 min-w-[22px] h-5 px-1.5 bg-gradient-to-r from-red-500 via-rose-500 to-pink-600 text-white font-extrabold text-[11px] rounded-full flex items-center justify-center border-2 border-slate-950 shadow-lg shadow-rose-500/60 animate-bounce">
+                {unreadMessages.length > 99 ? '99+' : unreadMessages.length}
+              </span>
+            ) : (
+              <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-emerald-400 rounded-full border-2 border-slate-900 shadow-sm animate-pulse" />
+            )}
           </button>
         </div>
       )}
@@ -323,6 +440,54 @@ export const FloatingAiAssistant: React.FC<FloatingAiAssistantProps> = ({
             <>
               {/* Chat Message List */}
               <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 scrollbar-thin scrollbar-thumb-slate-700">
+                {/* Unread Announcements / Direct Messages Card */}
+                {unreadMessages.length > 0 && (
+                  <div className="p-3 rounded-xl bg-gradient-to-r from-amber-500/20 via-rose-500/20 to-indigo-500/20 border border-amber-500/40 text-xs text-amber-200 space-y-2.5 animate-fadeIn shadow-lg">
+                    <div className="flex items-center justify-between font-extrabold text-white text-xs">
+                      <span className="flex items-center gap-1.5">
+                        <span className="flex h-2 w-2 relative">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                        </span>
+                        📢 {unreadMessages.length} Unread Message{unreadMessages.length > 1 ? 's' : ''} & Announcement{unreadMessages.length > 1 ? 's' : ''}
+                      </span>
+                      <button
+                        onClick={() => markMessagesAsRead()}
+                        className="text-[10px] text-amber-300 hover:text-white underline font-bold transition-colors"
+                      >
+                        Mark Read
+                      </button>
+                    </div>
+
+                    <div className="bg-slate-950/80 p-2.5 rounded-lg border border-amber-500/20 space-y-1">
+                      <div className="font-bold text-amber-400 flex items-center justify-between text-[11px]">
+                        <span className="truncate">{unreadMessages[unreadMessages.length - 1].senderName}</span>
+                        <span className="text-[9px] text-slate-400 font-normal shrink-0">
+                          {unreadMessages[unreadMessages.length - 1].channelId === 'announcements' ? '📢 Official Announcement' : '💬 Direct Message'}
+                        </span>
+                      </div>
+                      <p className="line-clamp-2 text-slate-300 text-[11px] leading-snug">
+                        {unreadMessages[unreadMessages.length - 1].text}
+                      </p>
+                    </div>
+
+                    {onNavigateToCommunity && (
+                      <button
+                        onClick={() => {
+                          const lastChan = unreadMessages[unreadMessages.length - 1].channelId;
+                          markMessagesAsRead();
+                          setIsOpen(false);
+                          onNavigateToCommunity(lastChan);
+                        }}
+                        className="w-full py-2 bg-gradient-to-r from-sky-500 via-blue-600 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-extrabold rounded-lg text-xs flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-98"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        <span>View Messages in Community Hub</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 <div className="p-2.5 sm:p-3 rounded-xl bg-sky-950/40 border border-sky-500/20 text-xs text-sky-200 flex items-start gap-2.5">
                   <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5 text-sky-400 shrink-0 mt-0.5" />
                   <div>
@@ -342,7 +507,7 @@ export const FloatingAiAssistant: React.FC<FloatingAiAssistantProps> = ({
                   >
                     <div className="flex items-center gap-1.5 mb-1 px-1">
                       <span className="text-[10px] font-semibold text-slate-400">
-                        {msg.sender === 'user' ? (currentUser?.name || 'You') : 'Fundora AI'}
+                        {msg.sender === 'user' ? (isUserAuthenticated && currentUser?.name ? currentUser.name : 'Guest') : 'Fundora AI'}
                       </span>
                       <span className="text-[10px] text-slate-500">{msg.timestamp}</span>
                     </div>

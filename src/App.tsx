@@ -1094,7 +1094,7 @@ export default function App() {
 
     // Role security guards:
     if (activeUser) {
-      if (activeUser.role === 'admin') {
+      if (activeUser?.role === 'admin') {
         // Admins can never access standard user dashboard
         if (page === 'dashboard') {
           setCurrentPage('admin');
@@ -2190,7 +2190,7 @@ export default function App() {
   // Landing page interactive selection
   const handleSelectProjectFromLanding = (project: RealEstateProject) => {
     if (activeUser) {
-      if (activeUser.role === 'admin') {
+      if (activeUser?.role === 'admin') {
         setCurrentPage('admin');
       } else {
         setActiveDashboardTab('properties');
@@ -2345,7 +2345,7 @@ export default function App() {
       {currentPage === 'community' && (
         <div className="w-full fixed top-[56px] bottom-[64px] sm:static sm:top-auto sm:bottom-auto sm:pt-20 sm:pb-6 px-0 sm:px-4 flex-1 flex flex-col min-h-0 overflow-hidden z-10">
           <CommunityHub 
-            currentUser={activeUser || INITIAL_USER} 
+            currentUser={activeUser} 
             onNavigateToDeposit={() => {
               setCurrentPage('dashboard');
               setActiveDashboardTab('wallet');

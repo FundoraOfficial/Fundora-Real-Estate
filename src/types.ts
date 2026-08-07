@@ -358,6 +358,7 @@ export interface CommunityMessage {
   senderRole?: MemberRole | string;
   text: string;
   timestamp: string; // ISO or readable
+  createdAt?: number; // epoch ms for exact sorting
   replyToId?: string;
   replyToPreview?: {
     senderName: string;

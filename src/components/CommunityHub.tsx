@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   MessageSquare, 
   Hash, 
@@ -86,31 +86,14 @@ const DEFAULT_CHANNELS: CommunityChannel[] = [
     allowedRoles: ['Owner', 'Admin']
   },
   {
-    id: 'general',
-    name: 'general-discussion',
-    type: 'public',
-    description: 'Global investor chat and community insights',
-    icon: '💬',
-    memberCount: 3890,
-    inviteCode: 'FUNDORA_GEN'
-  },
-  {
     id: 'tips',
     name: 'investment-tips',
-    type: 'public',
+    type: 'announcement',
     description: 'Daily AI tips, portfolio strategies & daily rental claims',
     icon: '💡',
     memberCount: 2150,
-    inviteCode: 'YIELD_TIPS'
-  },
-
-  {
-    id: 'support',
-    name: 'investor-support',
-    type: 'public',
-    description: 'Human admin support and verification queries',
-    icon: '🛟',
-    memberCount: 950
+    isLocked: true,
+    allowedRoles: ['Owner', 'Admin']
   }
 ];
 
@@ -124,32 +107,21 @@ const INITIAL_MESSAGES: Record<string, CommunityMessage[]> = {
       senderName: 'Fundora Compliance Team',
       senderEmail: 'fundora.one@gmail.com',
       senderRole: 'Admin',
-      text: "🚀 **Fundora Official Announcement**: We are thrilled to roll out our Native AI Investment Community! Now you can chat with fellow investors, create polls, share voice notes, and trigger @AI Assistant directly in discussions.\n\nUK Companies House Registration No. 16870956.",
+      text: "🚀 **Fundora Official Announcement**: We are thrilled to roll out our Native AI Investment Community! Official announcements, property listings, and yield updates will be posted here.\n\nUK Companies House Registration No. 16870956.",
       timestamp: new Date(Date.now() - 3600000 * 4).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       isPinned: true
     }
   ],
-  general: [
+  tips: [
     {
-      id: 'msg-gen-1',
-      channelId: 'general',
-      senderId: 'user-sample-1',
-      senderName: 'Tariq Mahmood',
-      senderEmail: 'tariq@example.com',
-      senderRole: 'Member',
-      text: "Assalam o Alaikum everyone! Just claimed my 1.2% daily rental yield for my Dubai Residential share. Claims processed instantly!",
-      timestamp: new Date(Date.now() - 3600000 * 2).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      reactions: { '🔥': ['user-1', 'user-2'], '👍': ['user-3'] }
-    },
-    {
-      id: 'msg-gen-2',
-      channelId: 'general',
+      id: 'msg-tips-1',
+      channelId: 'tips',
       senderId: 'ai-assistant',
       senderName: 'Fundora AI Agent',
       senderEmail: 'ai@fundora.one',
       senderRole: 'Admin',
-      text: "🤖 **AI Welcome**: Welcome to the Fundora Community! Remember, minimum deposit is **10 USDT** via TRC20/BEP20. Ask me any question by typing `@AI` in your message!",
-      timestamp: new Date(Date.now() - 3600000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      text: "💡 **Daily Investment Tip**: Reinvesting your daily 1.2% rental yield claims accelerates compound returns. Diversify across residential and commercial property shares for stable daily passive income.",
+      timestamp: new Date(Date.now() - 3600000 * 2).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       isAiGenerated: true
     }
   ]
@@ -178,11 +150,11 @@ const MOCK_TRUSTEES = [
 
 export const CommunityHub: React.FC<CommunityHubProps> = ({ 
   currentUser, 
-  initialChannelId = '',
+  initialChannelId = 'announcements',
   onNavigateToDeposit 
 }) => {
   const [channels, setChannels] = useState<CommunityChannel[]>(DEFAULT_CHANNELS);
-  const [activeChannelId, setActiveChannelId] = useState<string>(initialChannelId);
+  const [activeChannelId, setActiveChannelId] = useState<string>(initialChannelId || 'announcements');
   const [messages, setMessages] = useState<CommunityMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -198,8 +170,190 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
   const [dmSearchQuery, setDmSearchQuery] = useState('');
   const [replyingToMessage, setReplyingToMessage] = useState<CommunityMessage | null>(null);
 
+  // Attachment Upload State
+  const [selectedAttachment, setSelectedAttachment] = useState<{
+    url: string;
+    name: string;
+    type: 'image' | 'video' | 'document';
+    size?: string;
+  } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 10 * 1024 * 1024) {
+      alert("File size exceeds 10MB limit. Please select a smaller file.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onloadend = () => {
+      const base64Data = reader.result as string;
+      let type: 'image' | 'video' | 'document' = 'document';
+      if (file.type.startsWith('image/')) {
+        type = 'image';
+      } else if (file.type.startsWith('video/')) {
+        type = 'video';
+      }
+
+      const formatSize = (bytes: number) => {
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+      };
+
+      setSelectedAttachment({
+        url: base64Data,
+        name: file.name,
+        type,
+        size: formatSize(file.size)
+      });
+    };
+  };
+
+  // Effective visitor identity for DM separation (works for both logged-in users and guest/unauthenticated viewers)
+  const effectiveUser = useMemo(() => {
+    if (currentUser && currentUser.id && currentUser.id !== 'user-1' && currentUser.id !== 'user-demo' && currentUser.email !== 'user@fundora.one' && currentUser.email !== 'investor@example.com' && currentUser.name !== 'Active Investor' && currentUser.name !== 'Alex Mercer') {
+      return { id: currentUser.id, name: currentUser.name, email: currentUser.email, avatar: currentUser.avatarUrl || '👤', isGuest: false };
+    }
+    let guestId = localStorage.getItem('fundora_guest_dm_id');
+    let guestName = localStorage.getItem('fundora_guest_dm_name');
+    if (!guestId) {
+      const rand = Math.floor(1000 + Math.random() * 9000);
+      guestId = `guest-${rand}`;
+      guestName = `Guest Viewer #${rand}`;
+      localStorage.setItem('fundora_guest_dm_id', guestId);
+      localStorage.setItem('fundora_guest_dm_name', guestName);
+    }
+    return { id: guestId, name: guestName || 'Guest Viewer', email: `${guestId}@guest.fundora.one`, avatar: '👤', isGuest: true };
+  }, [currentUser]);
+
+  const [allDmMessages, setAllDmMessages] = useState<CommunityMessage[]>([]);
+
+  // Subscribe to all DM messages across Firestore to build admin multi-user DM threads
+  useEffect(() => {
+    if (!db) return;
+    try {
+      const q = query(collection(db, 'messages'));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const loaded: CommunityMessage[] = [];
+        snapshot.forEach(docSnap => {
+          const data = docSnap.data() as CommunityMessage;
+          if (data.channelId && data.channelId.startsWith('dm-')) {
+            loaded.push({ id: docSnap.id, ...data });
+          }
+        });
+        setAllDmMessages(loaded);
+      }, (err) => {
+        console.warn("[DM Snapshot Listener Warning]", err);
+      });
+      return () => unsubscribe();
+    } catch (e) {
+      console.warn("[DM Snapshot Warning]", e);
+    }
+  }, []);
+
+  const userDmThreads = useMemo(() => {
+    const dmMap = new Map<string, CommunityMessage>();
+
+    // Combine static INITIAL_MESSAGES for DMs and Firestore DM messages
+    Object.entries(INITIAL_MESSAGES).forEach(([chanId, msgList]) => {
+      if (chanId.startsWith('dm-')) {
+        msgList.forEach(m => dmMap.set(m.id, m));
+      }
+    });
+
+    allDmMessages.forEach(m => dmMap.set(m.id, m));
+
+    const allDms = Array.from(dmMap.values());
+    const grouped = new Map<string, CommunityMessage[]>();
+
+    allDms.forEach(m => {
+      if (!m.channelId || !m.channelId.startsWith('dm-')) return;
+      if (!grouped.has(m.channelId)) {
+        grouped.set(m.channelId, []);
+      }
+      grouped.get(m.channelId)!.push(m);
+    });
+
+    const threads: Array<{
+      channelId: string;
+      targetId: string;
+      targetCategoryName: string;
+      targetAvatar: string;
+      userId: string;
+      userName: string;
+      userEmail: string;
+      userAvatar: string;
+      lastMessageText: string;
+      lastTimestamp: string;
+      lastCreatedAt: number;
+      messageCount: number;
+    }> = [];
+
+    grouped.forEach((msgList, chanId) => {
+      msgList.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      const lastMsg = msgList[msgList.length - 1];
+
+      let targetId = 'ethan-ceo';
+      let targetCategoryName = 'Ethan Chiu (CEO)';
+      let targetAvatar = '👨‍💼';
+
+      if (chanId.includes('admin-1') || chanId.includes('support')) {
+        targetId = 'admin-1';
+        targetCategoryName = 'Fundora Support Team';
+        targetAvatar = '🛟';
+      } else if (chanId.includes('ai-assistant') || chanId.includes('ai-bot')) {
+        targetId = 'ai-assistant';
+        targetCategoryName = 'Fundora AI Agent';
+        targetAvatar = '🤖';
+      }
+
+      // Find non-admin sender message in this channel
+      const userMsg = msgList.find(m => m.senderId !== 'ethan-ceo' && m.senderId !== 'admin-1' && m.senderId !== 'ai-assistant');
+
+      let userId = userMsg?.senderId || chanId.replace(/^dm-(ethan-ceo|admin-1|ai-assistant)-?/, '') || 'user';
+      let userName = userMsg?.senderName || 'Community Member';
+      let userEmail = userMsg?.senderEmail || (userId.startsWith('guest-') ? `${userId}@guest.fundora.one` : 'user@fundora.one');
+      let userAvatar = userMsg?.senderAvatar || '👤';
+
+      if (chanId === 'dm-ethan-ceo' && !userMsg) {
+        userName = 'General Executive Channel';
+      } else if (chanId === 'dm-admin-1' && !userMsg) {
+        userName = 'General Support Channel';
+      }
+
+      threads.push({
+        channelId: chanId,
+        targetId,
+        targetCategoryName,
+        targetAvatar,
+        userId,
+        userName,
+        userEmail,
+        userAvatar,
+        lastMessageText: lastMsg ? lastMsg.text : 'Direct conversation started',
+        lastTimestamp: lastMsg ? lastMsg.timestamp : 'Just now',
+        lastCreatedAt: lastMsg ? (lastMsg.createdAt || Date.now()) : Date.now(),
+        messageCount: msgList.length
+      });
+    });
+
+    return threads.sort((a, b) => b.lastCreatedAt - a.lastCreatedAt);
+  }, [allDmMessages, messages]);
+
   const startDirectMessage = (trustee: typeof MOCK_TRUSTEES[0]) => {
-    const dmChannelId = `dm-${trustee.id}`;
+    let dmChannelId = `dm-${trustee.id}`;
+    const isAdminUser = currentUser?.role === 'admin' || currentUser?.isAdmin;
+
+    // For non-admin members/guests, isolate DM channel per user
+    if (!isAdminUser) {
+      dmChannelId = `dm-${trustee.id}-${effectiveUser.id}`;
+    }
+
     const existingChannel = channels.find(c => c.id === dmChannelId);
     if (!existingChannel) {
       const newDmChannel: CommunityChannel = {
@@ -224,9 +378,10 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
             text: trustee.id === 'ai-assistant'
               ? "🤖 Assalam o Alaikum! I am the Fundora AI Agent. How can I assist you with investment yields or property deals today?"
               : trustee.id === 'ethan-ceo'
-              ? "👨‍💼 Assalam o Alaikum! I'm Ethan Chiu, CEO of Fundora. Thank you for investing with us. How can I assist you today?"
+              ? "👨‍💼 Assalam o Alaikum! I'm Ethan Chiu, CEO of Fundora. Thank you for reaching out directly. How can I assist you today?"
               : "🛟 Assalam o Alaikum! Welcome to Fundora Support. How can we assist you with your account, deposits, or verification today?",
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            createdAt: Date.now()
           }
         ];
       }
@@ -259,8 +414,48 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const activeChannel = channels.find(c => c.id === activeChannelId) || null;
-  const isAdmin = currentUser.role === 'admin';
+  const isAdmin = currentUser?.role === 'admin';
+
+  const activeChannel = useMemo(() => {
+    const found = channels.find(c => c.id === activeChannelId);
+    if (found) return found;
+
+    if (activeChannelId.startsWith('dm-')) {
+      let targetName = 'Direct Message';
+      let icon = '💬';
+      let desc = 'Direct 1-to-1 conversation';
+
+      if (activeChannelId.includes('ethan-ceo')) {
+        targetName = 'Ethan Chiu (CEO)';
+        icon = '👨‍💼';
+        desc = 'Direct executive message with Ethan Chiu, CEO of Fundora';
+      } else if (activeChannelId.includes('admin-1') || activeChannelId.includes('support')) {
+        targetName = 'Fundora Support Team';
+        icon = '🛟';
+        desc = 'Direct support conversation with Fundora Support Team';
+      } else if (activeChannelId.includes('ai-assistant') || activeChannelId.includes('ai-bot')) {
+        targetName = 'Fundora AI Agent';
+        icon = '🤖';
+        desc = 'Direct conversation with Fundora AI Agent';
+      }
+
+      const thread = userDmThreads.find(t => t.channelId === activeChannelId);
+      if (thread && isAdmin) {
+        desc = `Direct conversation between ${targetName} and ${thread.userName} (${thread.userEmail})`;
+      }
+
+      return {
+        id: activeChannelId,
+        name: targetName,
+        type: 'private' as const,
+        description: desc,
+        icon,
+        memberCount: 2
+      };
+    }
+
+    return null;
+  }, [channels, activeChannelId, userDmThreads, isAdmin]);
 
   // Load Daily Tip
   useEffect(() => {
@@ -293,17 +488,28 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
       );
 
       const unsubscribe = onSnapshot(q, (snapshot) => {
-        if (!snapshot.empty) {
-          const loadedMsgs: CommunityMessage[] = [];
-          snapshot.forEach(docSnap => {
-            loadedMsgs.push({ id: docSnap.id, ...docSnap.data() } as CommunityMessage);
-          });
-          // sort chronologically
-          loadedMsgs.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-          setMessages(loadedMsgs);
-        } else {
-          setMessages(INITIAL_MESSAGES[activeChannelId] || []);
-        }
+        const loadedMsgs: CommunityMessage[] = [];
+        snapshot.forEach(docSnap => {
+          loadedMsgs.push({ id: docSnap.id, ...docSnap.data() } as CommunityMessage);
+        });
+
+        // Combine initial static template messages for this channel with Firestore loaded docs
+        const initialForChan = INITIAL_MESSAGES[activeChannelId] || [];
+        const msgMap = new Map<string, CommunityMessage>();
+
+        initialForChan.forEach(m => msgMap.set(m.id, m));
+        loadedMsgs.forEach(m => msgMap.set(m.id, m));
+
+        const combined = Array.from(msgMap.values());
+
+        // Sort chronologically using numeric createdAt or fallback timestamp
+        combined.sort((a, b) => {
+          const tA = a.createdAt || (a.timestamp && !a.timestamp.includes('M') ? new Date(a.timestamp).getTime() : 0) || 0;
+          const tB = b.createdAt || (b.timestamp && !b.timestamp.includes('M') ? new Date(b.timestamp).getTime() : 0) || 0;
+          return tA - tB;
+        });
+
+        setMessages(combined);
       }, (err) => {
         console.warn("[Community Firestore Listener Warning]", err);
         setMessages(INITIAL_MESSAGES[activeChannelId] || []);
@@ -372,16 +578,36 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
   };
 
   const sendVoiceNoteMessage = async (voiceBase64: string) => {
+    let senderId = effectiveUser.id;
+    let senderName = effectiveUser.name;
+    let senderEmail = effectiveUser.email;
+    let senderAvatar = effectiveUser.avatar;
+
+    if (isAdmin) {
+      if (adminPersona === 'ethan-ceo' || activeChannelId.includes('ethan-ceo')) {
+        senderId = 'ethan-ceo';
+        senderName = 'Ethan Chiu';
+        senderEmail = 'ethan@fundora.one';
+        senderAvatar = '👨‍💼';
+      } else if (adminPersona === 'support' || activeChannelId.includes('admin-1')) {
+        senderId = 'admin-1';
+        senderName = 'Fundora Support Team';
+        senderEmail = 'support@fundora.one';
+        senderAvatar = '🛟';
+      }
+    }
+
     const newMsg: CommunityMessage = {
       id: `msg-${Date.now()}`,
       channelId: activeChannelId,
-      senderId: currentUser.id,
-      senderName: currentUser.name,
-      senderEmail: currentUser.email,
-      senderAvatar: currentUser.avatarUrl,
+      senderId,
+      senderName,
+      senderEmail,
+      senderAvatar,
       senderRole: isAdmin ? 'Admin' : 'Member',
       text: '🎤 Voice Note',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      createdAt: Date.now(),
       voiceNoteUrl: voiceBase64
     };
 
@@ -389,39 +615,82 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
   };
 
   const saveMessage = async (msg: CommunityMessage) => {
-    setMessages(prev => [...prev, msg]);
+    const fullMsg: CommunityMessage = {
+      ...msg,
+      createdAt: msg.createdAt || Date.now()
+    };
 
+    // 1. Update static fallback store array for this channel so local state never loses sent messages
+    if (!INITIAL_MESSAGES[fullMsg.channelId]) {
+      INITIAL_MESSAGES[fullMsg.channelId] = [];
+    }
+    if (!INITIAL_MESSAGES[fullMsg.channelId].some(m => m.id === fullMsg.id)) {
+      INITIAL_MESSAGES[fullMsg.channelId].push(fullMsg);
+    }
+
+    // 2. Update React messages state
+    setMessages(prev => {
+      if (prev.some(m => m.id === fullMsg.id)) return prev;
+      const updated = [...prev, fullMsg];
+      return updated.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    });
+
+    // 3. Save to Firestore messages collection using setDoc with fixed id
     if (db) {
       try {
-        await addDoc(collection(db, 'messages'), msg);
+        await setDoc(doc(db, 'messages', fullMsg.id), fullMsg);
       } catch (err) {
         console.warn("[Firestore Save Message Warning]", err);
       }
     }
 
-    const isAiDm = msg.channelId === 'dm-ai-assistant' || msg.channelId === 'dm-ai-bot' || msg.channelId.startsWith('dm-ai-');
-    const isSenderUser = msg.senderId !== 'ai-assistant' && msg.senderId !== 'ai-bot';
+    // 4. Sync as an Inquiry record in Firestore so Admin Panel sees all user direct messages
+    const isUserSender = fullMsg.senderId !== 'ethan-ceo' && fullMsg.senderId !== 'admin-1' && fullMsg.senderId !== 'ai-assistant';
+    if (isUserSender && db) {
+      try {
+        const inqId = `inq-dm-${fullMsg.id}`;
+        const isEthan = fullMsg.channelId.includes('ethan-ceo');
+        const isSupport = fullMsg.channelId.includes('admin-1') || fullMsg.channelId.includes('support');
+        const targetDesc = isEthan ? 'Ethan Chiu (CEO)' : isSupport ? 'Support Team' : 'Community DM';
+
+        const inqData = {
+          id: inqId,
+          name: fullMsg.senderName || effectiveUser.name,
+          email: fullMsg.senderEmail || effectiveUser.email,
+          message: `💬 [Direct DM to ${targetDesc}]: ${fullMsg.text}`,
+          timestamp: new Date().toISOString(),
+          status: 'Pending',
+          channelId: fullMsg.channelId
+        };
+        await setDoc(doc(db, 'inquiries', inqId), inqData);
+      } catch (e) {
+        console.warn("[Inquiry DM Sync Warning]", e);
+      }
+    }
+
+    const isAiDm = fullMsg.channelId.includes('ai-assistant') || fullMsg.channelId.includes('ai-bot');
 
     // Auto-reply if message is sent in DM to AI Agent or if @AI is tagged in a channel
-    if (isAiDm && isSenderUser) {
-      triggerAiCommunityReply(msg.text, msg.channelId);
-    } else if (isSenderUser && (msg.text.includes('@AI') || msg.text.toLowerCase().includes('help') || msg.text.toLowerCase().includes('yield') || msg.text.toLowerCase().includes('deposit'))) {
-      triggerAiCommunityReply(msg.text, msg.channelId);
+    if (isAiDm && isUserSender) {
+      triggerAiCommunityReply(fullMsg.text, fullMsg.channelId);
+    } else if (isUserSender && (fullMsg.text.includes('@AI') || fullMsg.text.toLowerCase().includes('help') || fullMsg.text.toLowerCase().includes('yield') || fullMsg.text.toLowerCase().includes('deposit'))) {
+      triggerAiCommunityReply(fullMsg.text, fullMsg.channelId);
     }
 
     // Executive auto-response from Ethan Chiu if a member sends a DM to Ethan Chiu
-    if (msg.channelId === 'dm-ethan-ceo' && msg.senderId !== 'ethan-ceo' && !isAdmin) {
+    if (fullMsg.channelId.includes('ethan-ceo') && fullMsg.senderId !== 'ethan-ceo' && !isAdmin) {
       setTimeout(async () => {
         const ceoMsg: CommunityMessage = {
           id: `ethan-reply-${Date.now()}`,
-          channelId: 'dm-ethan-ceo',
+          channelId: fullMsg.channelId,
           senderId: 'ethan-ceo',
           senderName: 'Ethan Chiu',
           senderEmail: 'ethan@fundora.one',
           senderAvatar: '👨‍💼',
           senderRole: 'CEO',
           text: "👨‍💼 **Ethan Chiu (CEO)**: Assalam o Alaikum! Thank you for reaching out directly. I have received your message regarding Fundora property investments. My executive office or I will review and reply shortly!",
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          createdAt: Date.now()
         };
         await saveMessage(ceoMsg);
       }, 1500);
@@ -479,7 +748,10 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
 
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!inputText.trim()) return;
+    if ((activeChannel?.isLocked || activeChannel?.type === 'announcement') && !isAdmin) {
+      return;
+    }
+    if (!inputText.trim() && !selectedAttachment) return;
 
     if (editingMessage) {
       const updated = messages.map(m => 
@@ -493,26 +765,26 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
       return;
     }
 
-    let senderId = currentUser.id;
-    let senderName = currentUser.name;
-    let senderEmail = currentUser.email;
-    let senderAvatar = currentUser.avatarUrl;
+    let senderId = effectiveUser.id;
+    let senderName = effectiveUser.name;
+    let senderEmail = effectiveUser.email;
+    let senderAvatar = effectiveUser.avatar;
     let senderRole: 'Admin' | 'Member' | 'CEO' = isAdmin ? 'Admin' : 'Member';
 
     if (isAdmin) {
-      if (adminPersona === 'ethan-ceo' || activeChannelId === 'dm-ethan-ceo') {
+      if (adminPersona === 'ethan-ceo' || activeChannelId.includes('ethan-ceo')) {
         senderId = 'ethan-ceo';
         senderName = 'Ethan Chiu';
         senderEmail = 'ethan@fundora.one';
         senderAvatar = '👨‍💼';
         senderRole = 'CEO';
-      } else if (adminPersona === 'support' || activeChannelId === 'dm-admin-1') {
+      } else if (adminPersona === 'support' || activeChannelId.includes('admin-1')) {
         senderId = 'admin-1';
         senderName = 'Fundora Support Team';
         senderEmail = 'support@fundora.one';
         senderAvatar = '🛟';
         senderRole = 'Admin';
-      } else if (adminPersona === 'ai-bot' || activeChannelId === 'dm-ai-assistant') {
+      } else if (adminPersona === 'ai-bot' || activeChannelId.includes('ai-assistant')) {
         senderId = 'ai-assistant';
         senderName = 'Fundora AI Agent';
         senderEmail = 'ai@fundora.one';
@@ -529,17 +801,23 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
       senderEmail,
       senderAvatar,
       senderRole,
-      text: inputText,
+      text: inputText || (selectedAttachment ? `[Attachment: ${selectedAttachment.name}]` : ''),
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      createdAt: Date.now(),
       replyToId: replyingToMessage?.id,
       replyToPreview: replyingToMessage ? {
         senderName: replyingToMessage.senderName,
         text: replyingToMessage.text
-      } : undefined
+      } : undefined,
+      attachmentUrl: selectedAttachment?.url,
+      attachmentType: selectedAttachment?.type,
+      attachmentName: selectedAttachment?.name
     };
 
     setInputText('');
+    setSelectedAttachment(null);
     setReplyingToMessage(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
     await saveMessage(newMsg);
   };
 
@@ -548,11 +826,11 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
       if (m.id !== msgId) return m;
       const currentReactions = m.reactions || {};
       const users = currentReactions[emoji] || [];
-      const hasReacted = users.includes(currentUser.id);
+      const hasReacted = users.includes(effectiveUser.id);
       
       const newUsers = hasReacted 
-        ? users.filter(u => u !== currentUser.id)
-        : [...users, currentUser.id];
+        ? users.filter(u => u !== effectiveUser.id)
+        : [...users, effectiveUser.id];
 
       return {
         ...m,
@@ -583,9 +861,9 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
     const pollMsg: CommunityMessage = {
       id: `poll-msg-${Date.now()}`,
       channelId: activeChannelId,
-      senderId: currentUser.id,
-      senderName: currentUser.name,
-      senderEmail: currentUser.email,
+      senderId: effectiveUser.id,
+      senderName: effectiveUser.name,
+      senderEmail: effectiveUser.email,
       senderRole: isAdmin ? 'Admin' : 'Member',
       text: `📊 Community Poll: ${pollQuestion}`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -603,17 +881,17 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
       if (m.id !== msgId || !m.poll) return m;
 
       const updatedOptions = m.poll.options.map(opt => {
-        const hasVoted = opt.votes.includes(currentUser.id);
+        const hasVoted = opt.votes.includes(effectiveUser.id);
         if (opt.id === optionId) {
           return {
             ...opt,
-            votes: hasVoted ? opt.votes.filter(v => v !== currentUser.id) : [...opt.votes, currentUser.id]
+            votes: hasVoted ? opt.votes.filter(v => v !== effectiveUser.id) : [...opt.votes, effectiveUser.id]
           };
         } else {
           // Single choice poll: remove vote from other options
           return {
             ...opt,
-            votes: opt.votes.filter(v => v !== currentUser.id)
+            votes: opt.votes.filter(v => v !== effectiveUser.id)
           };
         }
       });
@@ -699,13 +977,15 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
                 Chat →
               </button>
             )}
-            <button
-              onClick={() => setShowCreateChannelModal(true)}
-              className="p-2 rounded-xl bg-slate-800 hover:bg-sky-900/40 text-sky-300 border border-slate-700 transition"
-              title="Create Channel / Group"
-            >
-              <Plus className="w-4 h-4" />
-            </button>
+            {isAdmin && (
+              <button
+                onClick={() => setShowCreateChannelModal(true)}
+                className="p-2 rounded-xl bg-slate-800 hover:bg-sky-900/40 text-sky-300 border border-slate-700 transition"
+                title="Create Channel / Group"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -799,48 +1079,110 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
                 <span>Start Direct Message</span>
               </button>
 
-              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2 pt-1">
-                Verified Direct Contacts
-              </div>
+              {!isAdmin ? (
+                <>
+                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2 pt-1">
+                    Direct Message Contacts
+                  </div>
 
-              <div className="space-y-1">
-                {MOCK_TRUSTEES.map(trustee => {
-                  const dmChannelId = `dm-${trustee.id}`;
-                  const isSelected = activeChannelId === dmChannelId;
-                  return (
-                    <button
-                      key={trustee.id}
-                      onClick={() => startDirectMessage(trustee)}
-                      className={`w-full p-2.5 rounded-xl transition flex items-center justify-between text-left group ${
-                        isSelected
-                          ? 'bg-gradient-to-r from-sky-600/30 via-sky-500/20 to-indigo-600/20 text-white font-bold border border-sky-500/40'
-                          : 'hover:bg-slate-800/60 text-slate-300 hover:text-white'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="relative shrink-0">
-                          <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-sm">
-                            {trustee.avatar}
+                  <div className="space-y-1">
+                    {MOCK_TRUSTEES.map(trustee => {
+                      const dmChannelId = `dm-${trustee.id}-${effectiveUser.id}`;
+                      const isSelected = activeChannelId === dmChannelId || activeChannelId === `dm-${trustee.id}`;
+                      return (
+                        <button
+                          key={trustee.id}
+                          onClick={() => startDirectMessage(trustee)}
+                          className={`w-full p-2.5 rounded-xl transition flex items-center justify-between text-left group ${
+                            isSelected
+                              ? 'bg-gradient-to-r from-sky-600/30 via-sky-500/20 to-indigo-600/20 text-white font-bold border border-sky-500/40'
+                              : 'hover:bg-slate-800/60 text-slate-300 hover:text-white'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="relative shrink-0">
+                              <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-sm">
+                                {trustee.avatar}
+                              </div>
+                              <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-slate-900 ${
+                                trustee.status === 'Online' ? 'bg-emerald-400' : 'bg-amber-400'
+                              }`} />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-xs font-semibold truncate flex items-center gap-1.5">
+                                <span className="truncate">{trustee.name}</span>
+                                {trustee.role === 'CEO' && <Crown className="w-3 h-3 text-amber-400 shrink-0" />}
+                              </div>
+                              <div className="text-[10px] text-slate-400 truncate">{trustee.bio}</div>
+                            </div>
                           </div>
-                          <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-slate-900 ${
-                            trustee.status === 'Online' ? 'bg-emerald-400' : 'bg-amber-400'
-                          }`} />
+                          <span className="text-[10px] font-semibold text-sky-400 group-hover:text-sky-300 px-2 py-1 rounded-lg bg-slate-950 border border-slate-800 shrink-0">
+                            Chat
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                /* Admin View: Grouped by Category with Separate User Chat Boxes */
+                <div className="space-y-4">
+                  <div className="text-[10px] font-bold text-amber-400 uppercase tracking-wider px-2 pt-1 border-b border-slate-800/80 pb-1">
+                    👥 User Direct Message Threads (Admin Hub)
+                  </div>
+                  {MOCK_TRUSTEES.map(trustee => {
+                    const categoryThreads = userDmThreads.filter(t => t.targetId === trustee.id || (trustee.id === 'ethan-ceo' && t.channelId.includes('ethan-ceo')) || (trustee.id === 'admin-1' && (t.channelId.includes('admin-1') || t.channelId.includes('support'))));
+                    
+                    return (
+                      <div key={trustee.id} className="space-y-1">
+                        <div className="flex items-center justify-between px-2 pt-1 text-[11px] font-bold text-sky-300 uppercase tracking-wider">
+                          <span className="flex items-center gap-1.5">
+                            <span>{trustee.avatar}</span>
+                            <span>{trustee.name} ({categoryThreads.length} User Chats)</span>
+                          </span>
                         </div>
-                        <div className="min-w-0">
-                          <div className="text-xs font-semibold truncate flex items-center gap-1.5">
-                            <span className="truncate">{trustee.name}</span>
-                            {trustee.role === 'Admin' && <Crown className="w-3 h-3 text-amber-400 shrink-0" />}
-                          </div>
-                          <div className="text-[10px] text-slate-400 truncate">{trustee.bio}</div>
-                        </div>
+                        {categoryThreads.length === 0 ? (
+                          <div className="px-3 py-1.5 text-[10px] text-slate-500 italic">No user messages yet under this category</div>
+                        ) : (
+                          categoryThreads.map(thread => {
+                            const isSelected = activeChannelId === thread.channelId;
+                            return (
+                              <button
+                                key={thread.channelId}
+                                onClick={() => {
+                                  setActiveChannelId(thread.channelId);
+                                  setMobileView('chat');
+                                }}
+                                className={`w-full p-2.5 rounded-xl transition flex items-center justify-between text-left group ${
+                                  isSelected
+                                    ? 'bg-gradient-to-r from-sky-600/30 via-sky-500/20 to-indigo-600/20 text-white font-bold border border-sky-500/40'
+                                    : 'hover:bg-slate-800/60 text-slate-300 hover:text-white'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <div className="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs shrink-0">
+                                    {thread.userAvatar}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <div className="text-xs font-semibold truncate flex items-center gap-1.5">
+                                      <span className="truncate">{thread.userName}</span>
+                                      <span className="text-[9px] text-slate-500">{thread.lastTimestamp}</span>
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 truncate">{thread.lastMessageText}</div>
+                                  </div>
+                                </div>
+                                <span className="text-[9px] font-semibold text-amber-400 px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800 shrink-0">
+                                  {thread.messageCount} msgs
+                                </span>
+                              </button>
+                            );
+                          })
+                        )}
                       </div>
-                      <span className="text-[10px] font-semibold text-sky-400 group-hover:text-sky-300 px-2 py-1 rounded-lg bg-slate-950 border border-slate-800 shrink-0">
-                        Chat
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
@@ -873,16 +1215,16 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
         <div className="p-3 border-t border-slate-800 bg-slate-950 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-sky-400 to-indigo-600 flex items-center justify-center font-bold text-white text-xs border border-sky-400/40 shrink-0">
-              {currentUser.name.charAt(0)}
+              {effectiveUser.name ? effectiveUser.name.charAt(0) : 'G'}
             </div>
             <div className="min-w-0">
               <div className="text-xs font-bold text-white truncate flex items-center gap-1">
-                {currentUser.name}
+                {effectiveUser.name}
                 {isAdmin && <Crown className="w-3 h-3 text-amber-400 shrink-0" />}
               </div>
               <div className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                Active Investor
+                {effectiveUser.isGuest ? 'Guest Visitor' : 'Active Investor'}
               </div>
             </div>
           </div>
@@ -1012,7 +1354,7 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
             filteredMessages.map(msg => (
               <div
                 key={msg.id}
-                className={`flex flex-col group ${msg.senderId === currentUser.id ? 'items-end' : 'items-start'}`}
+                className={`flex flex-col group ${msg.senderId === effectiveUser.id || (currentUser?.id && msg.senderId === currentUser.id) ? 'items-end' : 'items-start'}`}
               >
                 {/* Sender Metadata */}
                 <div className="flex items-center gap-2 mb-1 px-1">
@@ -1042,7 +1384,7 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
                 {/* Main Message Bubble */}
                 <div
                   className={`relative max-w-[85%] sm:max-w-[75%] p-3.5 rounded-2xl text-xs sm:text-sm leading-relaxed shadow-lg ${
-                    msg.senderId === currentUser.id
+                    msg.senderId === effectiveUser.id || (currentUser?.id && msg.senderId === currentUser.id)
                       ? 'bg-gradient-to-r from-sky-600 to-blue-600 text-white rounded-br-none border border-sky-400/30'
                       : msg.isPinned
                       ? 'bg-amber-950/40 text-amber-100 rounded-bl-none border border-amber-500/40'
@@ -1075,6 +1417,72 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
                     </div>
                   )}
 
+                  {/* File / Image / Video Attachment Rendering */}
+                  {msg.attachmentUrl && (
+                    <div className="mt-2.5">
+                      {msg.attachmentType === 'image' || (msg.attachmentUrl.startsWith('data:image/')) ? (
+                        <div className="relative group max-w-xs overflow-hidden rounded-xl border border-slate-700/80 bg-slate-950">
+                          <img 
+                            src={msg.attachmentUrl} 
+                            alt={msg.attachmentName || 'Attachment image'} 
+                            className="w-full max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                            onClick={() => window.open(msg.attachmentUrl, '_blank')}
+                          />
+                          <div className="p-1.5 bg-slate-950/90 border-t border-slate-800 flex items-center justify-between text-[10px] text-slate-300">
+                            <span className="truncate max-w-[180px] font-medium">{msg.attachmentName || 'Image Attachment'}</span>
+                            <a 
+                              href={msg.attachmentUrl} 
+                              download={msg.attachmentName || 'image.png'} 
+                              className="px-2 py-0.5 rounded bg-sky-500/20 hover:bg-sky-500/40 text-sky-300 font-bold flex items-center gap-1 transition shrink-0"
+                            >
+                              <Download className="w-3 h-3" />
+                              <span>Save</span>
+                            </a>
+                          </div>
+                        </div>
+                      ) : msg.attachmentType === 'video' || (msg.attachmentUrl.startsWith('data:video/')) ? (
+                        <div className="max-w-sm rounded-xl overflow-hidden border border-slate-700 bg-slate-950 p-1">
+                          <video controls src={msg.attachmentUrl} className="w-full max-h-60 rounded-lg" />
+                          {msg.attachmentName && (
+                            <div className="p-1.5 text-[11px] text-slate-300 font-medium truncate flex items-center justify-between">
+                              <span className="truncate flex items-center gap-1">
+                                <VideoIcon className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                                {msg.attachmentName}
+                              </span>
+                              <a 
+                                href={msg.attachmentUrl} 
+                                download={msg.attachmentName || 'video.mp4'} 
+                                className="px-2 py-0.5 rounded bg-rose-500/20 hover:bg-rose-500/40 text-rose-300 font-bold flex items-center gap-1 text-[10px] transition shrink-0"
+                              >
+                                <Download className="w-3 h-3" />
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="p-2.5 rounded-xl bg-slate-950/90 border border-slate-800 flex items-center justify-between gap-3 max-w-sm shadow-md">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-8 h-8 rounded-lg bg-sky-500/15 border border-sky-500/30 flex items-center justify-center shrink-0">
+                              <FileText className="w-4 h-4 text-sky-400" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-xs font-bold text-white truncate">{msg.attachmentName || 'Document Attachment'}</div>
+                              <div className="text-[10px] text-slate-400 font-mono">File Attachment</div>
+                            </div>
+                          </div>
+                          <a 
+                            href={msg.attachmentUrl} 
+                            download={msg.attachmentName || 'attachment'} 
+                            className="p-1.5 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 transition shrink-0 flex items-center gap-1 text-xs font-bold"
+                            title="Download Attachment"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Interactive Poll Rendering */}
                   {msg.poll && (
                     <div className="mt-3 p-3 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
@@ -1084,7 +1492,7 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
                           const percentage = msg.poll!.totalVotes > 0 
                             ? Math.round((opt.votes.length / msg.poll!.totalVotes) * 100) 
                             : 0;
-                          const hasVoted = opt.votes.includes(currentUser.id);
+                          const hasVoted = opt.votes.includes(effectiveUser.id);
 
                           return (
                             <button
@@ -1158,7 +1566,7 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
                             key={emoji}
                             onClick={() => handleReaction(msg.id, emoji)}
                             className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border flex items-center gap-1 transition ${
-                              users.includes(currentUser.id)
+                              users.includes(effectiveUser.id)
                                 ? 'bg-sky-950 border-sky-400 text-sky-200'
                                 : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
                             }`}
@@ -1263,60 +1671,126 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
                 }`}
               >
                 <span>👤</span>
-                <span>Admin ({currentUser.name})</span>
+                <span>Admin ({effectiveUser.name})</span>
               </button>
             </div>
           </div>
         )}
 
         {/* Chat Input Box */}
-        <div className="p-2.5 sm:p-3 bg-slate-900 border-t border-slate-800 shrink-0">
-          <form onSubmit={handleSendMessage} className="flex items-center gap-1.5 sm:gap-2">
-            {/* Poll Trigger */}
-            <button
-              type="button"
-              onClick={() => setShowPollModal(true)}
-              className="p-2 sm:p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-sky-300 transition shrink-0"
-              title="Create Poll"
-            >
-              <BarChart2 className="w-4 h-4" />
-            </button>
+        {(activeChannel?.isLocked || activeChannel?.type === 'announcement') && !isAdmin ? (
+          <div className="p-3.5 sm:p-4 bg-slate-900/95 border-t border-slate-800 shrink-0 text-center flex items-center justify-center gap-2 text-amber-400 text-xs sm:text-sm font-medium">
+            <Lock className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>Only administrators can post messages in <strong className="text-white">#{activeChannel?.name || 'this channel'}</strong></span>
+          </div>
+        ) : (
+          <div className="p-2.5 sm:p-3 bg-slate-900 border-t border-slate-800 shrink-0">
+            {/* Selected Attachment Preview Chip */}
+            {selectedAttachment && (
+              <div className="mb-2 p-2 rounded-xl bg-slate-950 border border-sky-500/40 flex items-center justify-between text-xs text-slate-200 animate-fadeIn">
+                <div className="flex items-center gap-2 min-w-0">
+                  {selectedAttachment.type === 'image' ? (
+                    <div className="w-8 h-8 rounded-lg overflow-hidden border border-slate-700 shrink-0">
+                      <img src={selectedAttachment.url} alt="Preview" className="w-full h-full object-cover" />
+                    </div>
+                  ) : selectedAttachment.type === 'video' ? (
+                    <div className="w-8 h-8 rounded-lg bg-rose-500/10 border border-rose-500/30 flex items-center justify-center shrink-0">
+                      <VideoIcon className="w-4 h-4 text-rose-400" />
+                    </div>
+                  ) : (
+                    <div className="w-8 h-8 rounded-lg bg-sky-500/10 border border-sky-500/30 flex items-center justify-center shrink-0">
+                      <FileText className="w-4 h-4 text-sky-400" />
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <div className="font-bold text-white truncate text-xs">{selectedAttachment.name}</div>
+                    <div className="text-[10px] text-slate-400 font-mono">{selectedAttachment.size || 'Ready to send'}</div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedAttachment(null);
+                    if (fileInputRef.current) fileInputRef.current.value = '';
+                  }}
+                  className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-rose-400 transition"
+                  title="Remove Attachment"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
 
-            {/* Voice Recorder Button */}
-            <button
-              type="button"
-              onClick={isRecording ? stopRecording : startRecording}
-              className={`p-2 sm:p-2.5 rounded-xl transition shrink-0 ${
-                isRecording 
-                  ? 'bg-red-600 text-white animate-bounce' 
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-sky-300'
-              }`}
-              title="Record Voice Note"
-            >
-              <Mic className="w-4 h-4" />
-            </button>
+            <form onSubmit={handleSendMessage} className="flex items-center gap-1.5 sm:gap-2">
+              {/* Hidden File Input */}
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleFileSelect} 
+                className="hidden" 
+                accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.txt"
+              />
 
-            {/* Text Input */}
-            <input
-              type="text"
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              placeholder={activeChannel ? `Message #${activeChannel.name}...` : 'Select a channel...'}
-              className="flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 transition"
-            />
+              {/* Attachment Button */}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className={`p-2 sm:p-2.5 rounded-xl transition shrink-0 ${
+                  selectedAttachment 
+                    ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40' 
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-sky-300'
+                }`}
+                title="Attach File / Image"
+              >
+                <Paperclip className="w-4 h-4" />
+              </button>
 
-            {/* Submit Send Button */}
-            <button
-              type="submit"
-              disabled={!inputText.trim()}
-              className="px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 disabled:opacity-40 text-white shadow-md shadow-sky-500/20 transition flex items-center justify-center shrink-0 gap-1 font-bold text-xs cursor-pointer active:scale-95"
-              title="Send Message"
-            >
-              <Send className="w-4 h-4" />
-              <span className="hidden sm:inline">Send</span>
-            </button>
-          </form>
-        </div>
+              {/* Poll Trigger */}
+              <button
+                type="button"
+                onClick={() => setShowPollModal(true)}
+                className="p-2 sm:p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-sky-300 transition shrink-0"
+                title="Create Poll"
+              >
+                <BarChart2 className="w-4 h-4" />
+              </button>
+
+              {/* Voice Recorder Button */}
+              <button
+                type="button"
+                onClick={isRecording ? stopRecording : startRecording}
+                className={`p-2 sm:p-2.5 rounded-xl transition shrink-0 ${
+                  isRecording 
+                    ? 'bg-red-600 text-white animate-bounce' 
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-sky-300'
+                }`}
+                title="Record Voice Note"
+              >
+                <Mic className="w-4 h-4" />
+              </button>
+
+              {/* Text Input */}
+              <input
+                type="text"
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                placeholder={activeChannel ? `Message #${activeChannel.name}...` : 'Select a channel...'}
+                className="flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 transition"
+              />
+
+              {/* Submit Send Button */}
+              <button
+                type="submit"
+                disabled={!inputText.trim() && !selectedAttachment}
+                className="px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 disabled:opacity-40 text-white shadow-md shadow-sky-500/20 transition flex items-center justify-center shrink-0 gap-1 font-bold text-xs cursor-pointer active:scale-95"
+                title="Send Message"
+              >
+                <Send className="w-4 h-4" />
+                <span className="hidden sm:inline">Send</span>
+              </button>
+            </form>
+          </div>
+        )}
           </>
         )}
       </div>
