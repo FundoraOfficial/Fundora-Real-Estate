@@ -51,7 +51,8 @@ import {
   subscribeToClaimsCollection,
   subscribeToSecurityLogsCollection,
   subscribeToSystemSettings,
-  subscribeToInquiriesCollection
+  subscribeToInquiriesCollection,
+  deduplicateUsersByEmail
 } from './lib/firebaseSync';
 import { sendDepositEmail, sendWithdrawalEmail, sendKycEmail } from './lib/emailService';
 import { isNativeAppContainer } from './utils/nativeApp';
@@ -157,7 +158,7 @@ export default function App() {
       deletedEmails = JSON.parse(localStorage.getItem('inv_deleted_user_emails') || '[]');
     } catch (_) {}
 
-    return list
+    const cleanList = list
       .map(u => {
         if (!u) return u;
         if (u.id === 'user-admin' && (u.email === 'admin@fundora.one' || u.email === 'no-reply@fundora.one')) {
@@ -172,6 +173,8 @@ export default function App() {
         !deletedIds.includes(u.id) &&
         !deletedEmails.includes(u.email.trim().toLowerCase())
       );
+
+    return deduplicateUsersByEmail(cleanList);
   });
 
   const [activeUser, setActiveUser] = useState<UserAccount | null>(() => {
@@ -1137,13 +1140,8 @@ export default function App() {
     } catch (_) {}
 
     setUsersListState(prev => {
-      const exists = prev.some(u => u.id === user.id || (u.email && u.email.toLowerCase().trim() === cleanE));
-      let updated: UserAccount[];
-      if (exists) {
-        updated = prev.map(u => (u.id === user.id || (u.email && u.email.toLowerCase().trim() === cleanE)) ? user : u);
-      } else {
-        updated = [...prev, user];
-      }
+      const filtered = prev.filter(u => u && u.email && u.email.toLowerCase().trim() !== cleanE && u.id !== user.id);
+      const updated = [user, ...filtered];
       safeSetLocalStorage('inv_users', JSON.stringify(updated));
       return updated;
     });
@@ -1196,12 +1194,10 @@ export default function App() {
     setIsAppLocked(false);
 
     // Save/update global users list
+    const cleanE = userAccount.email.trim().toLowerCase();
     setUsersListState(prev => {
-      const exists = prev.some(u => u.email.trim().toLowerCase() === userAccount.email.trim().toLowerCase());
-      if (exists) {
-        return prev.map(u => u.email.trim().toLowerCase() === userAccount.email.trim().toLowerCase() ? { ...u, ...userAccount } : u);
-      }
-      return [...prev, userAccount];
+      const filtered = prev.filter(u => u && u.email && u.email.trim().toLowerCase() !== cleanE && u.id !== userAccount.id);
+      return [userAccount, ...filtered];
     });
 
     saveAndSyncUser(userAccount);
@@ -1221,12 +1217,10 @@ export default function App() {
 
   // Add pending register user to usersListState to allow resumption
   const handleRegisterPending = (pendingUser: UserAccount) => {
+    const cleanE = pendingUser.email.trim().toLowerCase();
     setUsersListState(prev => {
-      const exists = prev.some(u => u.email.trim().toLowerCase() === pendingUser.email.trim().toLowerCase());
-      if (exists) {
-        return prev.map(u => u.email.trim().toLowerCase() === pendingUser.email.trim().toLowerCase() ? { ...u, ...pendingUser } : u);
-      }
-      return [...prev, pendingUser];
+      const filtered = prev.filter(u => u && u.email && u.email.trim().toLowerCase() !== cleanE && u.id !== pendingUser.id);
+      return [pendingUser, ...filtered];
     });
 
     saveAndSyncUser(pendingUser);

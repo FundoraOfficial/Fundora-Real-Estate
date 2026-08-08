@@ -641,6 +641,18 @@ export default function AuthPages({ initialScreen = 'login', onAuthSuccess, onNa
     // Check if user already exists locally or in live Firestore
     let existingUser = usersList.find(u => u && u.email && u.email.trim().toLowerCase() === cleanEmail);
 
+    if (!existingUser) {
+      try {
+        const saved = localStorage.getItem('inv_users');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            existingUser = parsed.find((u: any) => u && u.email && u.email.trim().toLowerCase() === cleanEmail);
+          }
+        }
+      } catch (_) {}
+    }
+
     if (!existingUser && isFirebaseEnabled()) {
       try {
         const q = query(collection(db, 'users'), where('email', '==', cleanEmail));
@@ -666,7 +678,8 @@ export default function AuthPages({ initialScreen = 'login', onAuthSuccess, onNa
     }
 
     if (existingUser) {
-      if (existingUser.isEmailVerified) {
+      const isAlreadyRegistered = existingUser.isEmailVerified !== false || Boolean(existingUser.password && existingUser.password.trim().length > 0);
+      if (isAlreadyRegistered) {
         setErrorMsg('This email address is already bound to another registered investor. Please log in.');
         return;
       } else {

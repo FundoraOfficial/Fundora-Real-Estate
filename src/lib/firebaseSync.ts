@@ -184,6 +184,50 @@ export const loadProjectsFromFirebase = async (): Promise<RealEstateProject[] | 
   }
 };
 
+// Helper to ensure strictly ONE user account per unique email address
+export const deduplicateUsersByEmail = (users: UserAccount[]): UserAccount[] => {
+  if (!users || !Array.isArray(users)) return [];
+  const map = new Map<string, UserAccount>();
+
+  for (const rawUser of users) {
+    if (!rawUser || !rawUser.email) continue;
+    const cleanEmail = rawUser.email.trim().toLowerCase();
+    if (cleanEmail === 'no-reply@fundora.one') continue;
+
+    const user: UserAccount = {
+      ...rawUser,
+      email: cleanEmail,
+      password: rawUser.password ? rawUser.password.trim() : (rawUser.password || '')
+    };
+
+    if (!map.has(cleanEmail)) {
+      map.set(cleanEmail, user);
+    } else {
+      const existing = map.get(cleanEmail)!;
+      const isExistingAdmin = existing.role === 'admin';
+      const isNewAdmin = user.role === 'admin';
+
+      if (isNewAdmin && !isExistingAdmin) {
+        map.set(cleanEmail, user);
+      } else if (!isNewAdmin && isExistingAdmin) {
+        // Keep existing admin
+      } else if (user.isEmailVerified && !existing.isEmailVerified) {
+        map.set(cleanEmail, user);
+      } else if (!user.isEmailVerified && existing.isEmailVerified) {
+        // Keep existing verified user
+      } else {
+        const userActivity = (user.balance || 0) + (user.totalInvestment || 0) + (user.totalDeposited || 0);
+        const existingActivity = (existing.balance || 0) + (existing.totalInvestment || 0) + (existing.totalDeposited || 0);
+        if (userActivity >= existingActivity) {
+          map.set(cleanEmail, user);
+        }
+      }
+    }
+  }
+
+  return Array.from(map.values());
+};
+
 export const loadUsersFromFirebase = async (): Promise<UserAccount[] | null> => {
   const isAndroid = typeof window !== 'undefined' && (
     /android/i.test(navigator.userAgent) || 
@@ -237,8 +281,9 @@ export const loadUsersFromFirebase = async (): Promise<UserAccount[] | null> => 
       }
     }
 
-    console.log(`${tag} Cleaned users count: ${cleanedUsers.length}. Emails found:`, cleanedUsers.map(u => u.email));
-    return cleanedUsers;
+    const deduped = deduplicateUsersByEmail(cleanedUsers);
+    console.log(`${tag} Cleaned users count: ${deduped.length}. Emails found:`, deduped.map(u => u.email));
+    return deduped;
   } catch (e: any) {
     console.error(`${tag} ERROR loading users from Firebase Firestore:`, e);
     return null;
@@ -350,6 +395,25 @@ export const saveUserToFirebase = async (user: UserAccount) => {
 
   // Strip out any undefined properties that cause Firestore setDoc to reject with 'Unsupported field value: undefined'
   const cleanUser: UserAccount = cleanPayloadForFirestore(rawUser);
+
+  // Clean up any duplicate user documents in Firestore with the same email address
+  if (isFirebaseEnabled() && db && cleanEmail) {
+    try {
+      const snap = await getDocs(collection(db, 'users'));
+      for (const d of snap.docs) {
+        const data = d.data();
+        const docEmail = data?.email ? String(data.email).trim().toLowerCase() : '';
+        if (docEmail === cleanEmail && d.id !== cleanUser.id && data?.id !== cleanUser.id) {
+          console.log(`${tag} Cleaning up redundant duplicate user doc "${d.id}" for email "${cleanEmail}"`);
+          try {
+            await deleteDoc(doc(db, 'users', d.id));
+          } catch (_) {}
+        }
+      }
+    } catch (e) {
+      console.warn(`${tag} Duplicate cleanup non-blocking error:`, e);
+    }
+  }
 
   console.log(`${tag} [BEFORE setDoc] Preparing setDoc for doc path "users/${cleanUser.id}":`, {
     cleanUserId: cleanUser.id,
@@ -491,9 +555,10 @@ export const subscribeToUsersCollection = (callback: (users: UserAccount[]) => v
             email: cleanEmail,
             password: u.password ? u.password.trim() : u.password
           };
-        }).filter(u => u && u.email && u.email.trim().toLowerCase() !== 'no-reply@fundora.one');
-        console.log('[DEBUG LOG - USERS SUBSCRIPTION SUCCESS] Loaded user emails:', users.map(u => u?.email));
-        callback(users as UserAccount[]);
+        }).filter(u => u && u.email && u.email.trim().toLowerCase() !== 'no-reply@fundora.one') as UserAccount[];
+        const dedupedUsers = deduplicateUsersByEmail(users);
+        console.log('[DEBUG LOG - USERS SUBSCRIPTION SUCCESS] Loaded user emails:', dedupedUsers.map(u => u?.email));
+        callback(dedupedUsers);
       } else {
         console.log('[DEBUG LOG - USERS SUBSCRIPTION SNAPSHOT] Snapshot empty');
         callback([]);
