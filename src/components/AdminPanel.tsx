@@ -10,7 +10,7 @@ import { doc, setDoc } from 'firebase/firestore';
 import { 
   Shield, Users, Landmark, Coins, FileText, Check, X, ShieldAlert,
   ArrowDownCircle, ArrowUpCircle, Plus, Eye, RefreshCw, Key, AlertOctagon, BarChart2,
-  Unlock, Minus, Wallet, User, Lock, Mail, MessageSquare, CheckCircle, XCircle, Download, Ban, CheckCircle2, Power, Trash2, Copy, Paperclip
+  Unlock, Minus, Wallet, User, Lock, Mail, MessageSquare, CheckCircle, XCircle, Download, Ban, CheckCircle2, Power, Trash2, Copy, Paperclip, Clock, Filter, Search
 } from 'lucide-react';
 
 interface AdminPanelProps {
@@ -349,6 +349,8 @@ export default function AdminPanel({
   const [zoomedKycUrl, setZoomedKycUrl] = useState<string | null>(null);
   const [zoomedKycName, setZoomedKycName] = useState<string>('');
   const [selectedProofTx, setSelectedProofTx] = useState<Transaction | null>(null);
+  const [userKycFilter, setUserKycFilter] = useState<'All' | 'Verified' | 'Unverified' | 'Under Review' | 'Rejected'>('All');
+  const [userSearchTerm, setUserSearchTerm] = useState<string>('');
 
   // Preset listing images
   const PRESET_PROPERTY_IMAGES = [
@@ -492,6 +494,16 @@ export default function AdminPanel({
     const totalUsers = usersList.length;
     const activeUsers = usersList.filter(u => u.balance > 0 || u.totalInvestment > 0).length;
 
+    const kycVerifiedCount = usersList.filter(u => u.kycStatus === 'Verified' || (u.isKycVerified && u.kycStatus !== 'Rejected' && u.kycStatus !== 'Under Review')).length;
+    const kycUnderReviewCount = usersList.filter(u => u.kycStatus === 'Under Review' || (!u.isKycVerified && u.kycSubmitted && u.kycStatus !== 'Rejected')).length;
+    const kycRejectedCount = usersList.filter(u => u.kycStatus === 'Rejected').length;
+    const kycUnverifiedCount = usersList.filter(u => {
+      const isVer = u.kycStatus === 'Verified' || (u.isKycVerified && u.kycStatus !== 'Rejected' && u.kycStatus !== 'Under Review');
+      const isRev = u.kycStatus === 'Under Review' || (!u.isKycVerified && u.kycSubmitted && u.kycStatus !== 'Rejected');
+      const isRej = u.kycStatus === 'Rejected';
+      return !isVer && !isRev && !isRej;
+    }).length;
+
     const totalInvestmentsVal = transactions
       .filter(t => t.type === 'Investment' && t.status === 'Completed')
       .reduce((sum, t) => sum + t.amount, 0);
@@ -515,6 +527,10 @@ export default function AdminPanel({
     return {
       totalUsers,
       activeUsers,
+      kycVerifiedCount,
+      kycUnverifiedCount,
+      kycRejectedCount,
+      kycUnderReviewCount,
       totalInvestmentsVal,
       totalDepositsVal,
       totalWithdrawalsVal,
@@ -647,46 +663,361 @@ export default function AdminPanel({
         {adminTab === 'stats' && (
           <div className="space-y-6">
 
-            {/* Quick alert */}
-            <div className="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300 leading-normal font-sans">
-              <strong>Admin Compliance Shield On:</strong> Antigravity heuristics are analyzing user deposits in real-time. Review pending crypto transits in corresponding channels.
+            {/* Quick alert bar */}
+            <div className="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300 leading-normal font-sans flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
+                <span><strong>Admin Compliance Shield Active:</strong> Real-time platform statistics & KYC identity verification pipeline tracking.</span>
+              </div>
+              {stats.kycUnderReviewCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUserKycFilter('Under Review');
+                    setAdminTab('users');
+                  }}
+                  className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black uppercase rounded-xl text-[10px] shrink-0 transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/20 cursor-pointer active:scale-95"
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>Review {stats.kycUnderReviewCount} Pending KYCs →</span>
+                </button>
+              )}
             </div>
 
-            {/* Total System stats grids */}
-            <div className="space-y-2">
-              <span className="text-[9px] font-mono font-bold uppercase tracking-wider text-slate-500 block">Systemic Cumulative Metrics</span>
-              
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-mono">
+            {/* ================= CARD BOX 1: USER KYC IDENTITY VERIFICATION (4 CATEGORIES) ================= */}
+            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 space-y-4 shadow-xl">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
+                <div className="flex items-center space-x-2.5">
+                  <div className="p-2 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-xl shadow-inner">
+                    <Users className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white uppercase font-mono tracking-wider">User KYC Identity Statistics</h3>
+                    <p className="text-[10px] text-slate-400 font-sans">Categorized compliance pipeline & user verification metrics</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono text-slate-400 bg-slate-950 px-3 py-1 rounded-xl border border-slate-800/80 shadow-inner">
+                    Total Registered Accounts: <strong className="text-white font-black">{stats.totalUsers}</strong>
+                  </span>
+                </div>
+              </div>
+
+              {/* Grid of 4 Categories */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 font-mono">
                 
-                <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-1.5">
-                  <span className="text-[10px] text-slate-400 font-medium font-sans">Total Register Users</span>
-                  <div className="text-xl font-bold font-mono text-white">{stats.totalUsers}</div>
-                  <span className="text-[8px] text-slate-500 block">Active portfolio: {stats.activeUsers}</span>
+                {/* Category 1: Verified KYC Users */}
+                <div 
+                  onClick={() => {
+                    setUserKycFilter('Verified');
+                    setAdminTab('users');
+                  }}
+                  className="bg-slate-950/90 p-4 rounded-xl border border-emerald-500/30 hover:border-emerald-500/60 transition-all cursor-pointer space-y-2.5 group relative overflow-hidden shadow-md"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-slate-400 font-sans font-bold uppercase tracking-wider">1. KYC Verified Users</span>
+                    <span className="p-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-lg">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                    </span>
+                  </div>
+                  <div className="text-2xl sm:text-3xl font-black text-emerald-400 group-hover:scale-105 transition-transform origin-left">
+                    {stats.kycVerifiedCount}
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-900 text-[9.5px] text-slate-400 font-sans">
+                    <span>Identity confirmed</span>
+                    <span className="text-emerald-400 group-hover:underline font-bold">Filter users →</span>
+                  </div>
                 </div>
 
-                <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-1.5">
-                  <span className="text-[10px] text-slate-400 font-medium font-sans">Accumulated Deposits</span>
-                  <div className="text-xl font-bold font-mono text-emerald-400">${stats.totalDepositsVal.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
-                  <span className="text-[8px] text-slate-500 block">Cryptographic verified loops</span>
+                {/* Category 2: Unverified Users */}
+                <div 
+                  onClick={() => {
+                    setUserKycFilter('Unverified');
+                    setAdminTab('users');
+                  }}
+                  className="bg-slate-950/90 p-4 rounded-xl border border-slate-800 hover:border-slate-700 transition-all cursor-pointer space-y-2.5 group relative overflow-hidden shadow-md"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-slate-400 font-sans font-bold uppercase tracking-wider">2. Unverified Users</span>
+                    <span className="p-1.5 bg-slate-800/80 text-slate-400 border border-slate-700 rounded-lg">
+                      <User className="w-3.5 h-3.5" />
+                    </span>
+                  </div>
+                  <div className="text-2xl sm:text-3xl font-black text-slate-200 group-hover:scale-105 transition-transform origin-left">
+                    {stats.kycUnverifiedCount}
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-900 text-[9.5px] text-slate-400 font-sans">
+                    <span>No scan submitted</span>
+                    <span className="text-slate-400 group-hover:underline font-bold">Filter users →</span>
+                  </div>
                 </div>
 
-                <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-1.5">
-                  <span className="text-[10px] text-slate-400 font-medium font-sans">Corporate Investments</span>
-                  <div className="text-xl font-bold font-mono text-white">${stats.totalInvestmentsVal.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
-                  <span className="text-[8px] text-slate-500 block">Fractional property shares</span>
+                {/* Category 3: Rejected KYC Users */}
+                <div 
+                  onClick={() => {
+                    setUserKycFilter('Rejected');
+                    setAdminTab('users');
+                  }}
+                  className="bg-slate-950/90 p-4 rounded-xl border border-rose-500/30 hover:border-rose-500/60 transition-all cursor-pointer space-y-2.5 group relative overflow-hidden shadow-md"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-slate-400 font-sans font-bold uppercase tracking-wider">3. Rejected KYC Users</span>
+                    <span className="p-1.5 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded-lg">
+                      <XCircle className="w-3.5 h-3.5" />
+                    </span>
+                  </div>
+                  <div className="text-2xl sm:text-3xl font-black text-rose-400 group-hover:scale-105 transition-transform origin-left">
+                    {stats.kycRejectedCount}
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-900 text-[9.5px] text-slate-400 font-sans">
+                    <span>Verification declined</span>
+                    <span className="text-rose-400 group-hover:underline font-bold">Filter users →</span>
+                  </div>
                 </div>
 
-                <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-1.5">
-                  <span className="text-[10px] text-slate-400 font-medium font-sans">Net Withdrawals Paid</span>
-                  <div className="text-xl font-bold font-mono text-slate-200">${stats.totalWithdrawalsVal.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
-                  <span className="text-[8px] text-slate-500 block">USDT TRC20 / BEP20</span>
+                {/* Category 4: Under Review KYC Users */}
+                <div 
+                  onClick={() => {
+                    setUserKycFilter('Under Review');
+                    setAdminTab('users');
+                  }}
+                  className="bg-gradient-to-b from-amber-500/15 via-slate-950 to-slate-950 p-4 rounded-xl border-2 border-amber-500/60 hover:border-amber-400 transition-all cursor-pointer space-y-2.5 group relative shadow-lg shadow-amber-500/10 active:scale-98"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-amber-300 font-sans font-bold uppercase tracking-wider flex items-center gap-1.5">
+                      <span>4. Under Review KYC</span>
+                      <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+                    </span>
+                    <span className="p-1.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-lg">
+                      <Clock className="w-3.5 h-3.5" />
+                    </span>
+                  </div>
+                  <div className="text-2xl sm:text-3xl font-black text-amber-400 group-hover:scale-105 transition-transform origin-left flex items-center justify-between">
+                    <span>{stats.kycUnderReviewCount}</span>
+                    <span className="text-[9px] bg-amber-500 text-slate-950 font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider font-sans shadow-sm">
+                      Click to Filter
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-amber-500/25 text-[9.5px] text-amber-300/90 font-bold font-sans">
+                    <span>Pending inspection</span>
+                    <span className="text-amber-300 underline group-hover:text-amber-200">Show Filtered Data →</span>
+                  </div>
                 </div>
 
-                <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-1.5">
-                  <span className="text-[10px] text-slate-400 font-medium font-sans">Total Profits Claimed</span>
-                  <div className="text-xl font-bold font-mono text-emerald-400">${stats.totalProfitsPaid.toFixed(2)}</div>
-                  <span className="text-[8px] text-slate-500 block">Accrued daily 9-10 PM GST</span>
+              </div>
+            </div>
+
+            {/* ================= CARD BOX 2: SYSTEMIC FINANCIAL PERFORMANCE ================= */}
+            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 space-y-4 shadow-xl">
+              <div className="flex items-center space-x-2.5 border-b border-slate-800/80 pb-3">
+                <div className="p-2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-xl shadow-inner">
+                  <Coins className="w-5 h-5" />
                 </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white uppercase font-mono tracking-wider">Financial & Ledger Performance Cards</h3>
+                  <p className="text-[10px] text-slate-400 font-sans">Aggregated deposits, active portfolios, and yield distributions</p>
+                </div>
+              </div>
+
+              {/* Grid: 1 column on tiny screens, 2 on sm, 3 on lg for optimum readability & zero wrapping defects */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 font-mono">
+                
+                {/* Card 1: Registered Users */}
+                <div 
+                  onClick={() => {
+                    setUserKycFilter('All');
+                    setAdminTab('users');
+                  }}
+                  className="bg-slate-950/90 p-4 rounded-xl border border-slate-800 hover:border-indigo-500/50 transition-all cursor-pointer space-y-2 group relative overflow-hidden shadow-md"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-sans font-bold uppercase tracking-wider text-slate-400">Total Registered Users</span>
+                    <span className="p-1.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-lg">
+                      <Users className="w-4 h-4" />
+                    </span>
+                  </div>
+                  <div className="text-xl sm:text-2xl font-black text-white group-hover:scale-105 transition-transform origin-left">
+                    {stats.totalUsers}
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-900 text-[9.5px] text-slate-400 font-sans">
+                    <span>Active Portfolios</span>
+                    <span className="text-amber-400 font-bold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">{stats.activeUsers} Users</span>
+                  </div>
+                </div>
+
+                {/* Card 2: Accumulated Deposits */}
+                <div 
+                  onClick={() => setAdminTab('deposits')}
+                  className="bg-slate-950/90 p-4 rounded-xl border border-slate-800 hover:border-emerald-500/50 transition-all cursor-pointer space-y-2 group relative overflow-hidden shadow-md"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-sans font-bold uppercase tracking-wider text-slate-400">Accumulated Deposits</span>
+                    <span className="p-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-lg">
+                      <ArrowDownCircle className="w-4 h-4" />
+                    </span>
+                  </div>
+                  <div className="text-xl sm:text-2xl font-black text-emerald-400 group-hover:scale-105 transition-transform origin-left truncate">
+                    ${stats.totalDepositsVal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-900 text-[9.5px] text-slate-400 font-sans">
+                    <span>Verified Deposits</span>
+                    <span className="text-emerald-400 group-hover:underline flex items-center gap-1 font-bold">Review →</span>
+                  </div>
+                </div>
+
+                {/* Card 3: Corporate Investments */}
+                <div 
+                  onClick={() => setAdminTab('projects')}
+                  className="bg-slate-950/90 p-4 rounded-xl border border-slate-800 hover:border-indigo-500/50 transition-all cursor-pointer space-y-2 group relative overflow-hidden shadow-md"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-sans font-bold uppercase tracking-wider text-slate-400">Corporate Investments</span>
+                    <span className="p-1.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-lg">
+                      <Landmark className="w-4 h-4" />
+                    </span>
+                  </div>
+                  <div className="text-xl sm:text-2xl font-black text-white group-hover:scale-105 transition-transform origin-left truncate">
+                    ${stats.totalInvestmentsVal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-900 text-[9.5px] text-slate-400 font-sans">
+                    <span>Real Estate Shares</span>
+                    <span className="text-indigo-400 group-hover:underline flex items-center gap-1 font-bold">Manage →</span>
+                  </div>
+                </div>
+
+                {/* Card 4: Net Withdrawals Paid */}
+                <div 
+                  onClick={() => setAdminTab('withdrawals')}
+                  className="bg-slate-950/90 p-4 rounded-xl border border-slate-800 hover:border-rose-500/50 transition-all cursor-pointer space-y-2 group relative overflow-hidden shadow-md"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-sans font-bold uppercase tracking-wider text-slate-400">Net Withdrawals Paid</span>
+                    <span className="p-1.5 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded-lg">
+                      <ArrowUpCircle className="w-4 h-4" />
+                    </span>
+                  </div>
+                  <div className="text-xl sm:text-2xl font-black text-slate-200 group-hover:scale-105 transition-transform origin-left truncate">
+                    ${stats.totalWithdrawalsVal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-900 text-[9.5px] text-slate-400 font-sans">
+                    <span>Dispatched TRC20/BEP20</span>
+                    <span className="text-rose-400 group-hover:underline flex items-center gap-1 font-bold">Review →</span>
+                  </div>
+                </div>
+
+                {/* Card 5: Total Profits Claimed */}
+                <div 
+                  className="bg-slate-950/90 p-4 rounded-xl border border-slate-800 hover:border-emerald-500/30 transition-all space-y-2 group relative overflow-hidden shadow-md"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-sans font-bold uppercase tracking-wider text-slate-400">Total Profits Claimed</span>
+                    <span className="p-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-lg">
+                      <BarChart2 className="w-4 h-4" />
+                    </span>
+                  </div>
+                  <div className="text-xl sm:text-2xl font-black text-emerald-400 group-hover:scale-105 transition-transform origin-left truncate">
+                    ${stats.totalProfitsPaid.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-900 text-[9.5px] text-slate-400 font-sans">
+                    <span>Distributed Yield</span>
+                    <span className="text-slate-500 font-mono">Daily 9-10 PM GST</span>
+                  </div>
+                </div>
+
+                {/* Card 6: Total Referral Bonuses */}
+                <div 
+                  className="bg-slate-950/90 p-4 rounded-xl border border-slate-800 hover:border-amber-500/30 transition-all space-y-2 group relative overflow-hidden shadow-md"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-sans font-bold uppercase tracking-wider text-slate-400">Total Referral Bonuses</span>
+                    <span className="p-1.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-lg">
+                      <Coins className="w-4 h-4" />
+                    </span>
+                  </div>
+                  <div className="text-xl sm:text-2xl font-black text-amber-400 group-hover:scale-105 transition-transform origin-left truncate">
+                    ${stats.totalReferralsVal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-900 text-[9.5px] text-slate-400 font-sans">
+                    <span>Multi-Tier Commission</span>
+                    <span className="text-slate-500 font-mono">Tier Rewards</span>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            {/* ================= CARD BOX 3: OPERATIONAL ACTION QUEUES ================= */}
+            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 space-y-4 shadow-xl">
+              <div className="flex items-center space-x-2.5 border-b border-slate-800/80 pb-3">
+                <div className="p-2 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-xl shadow-inner">
+                  <ShieldAlert className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white uppercase font-mono tracking-wider">Pending Operational Action Queues</h3>
+                  <p className="text-[10px] text-slate-400 font-sans">Direct shortcuts to pending compliance review desks</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 font-mono">
+                
+                <button
+                  type="button"
+                  onClick={() => setAdminTab('deposits')}
+                  className="p-4 bg-slate-950/90 border border-slate-800 hover:border-amber-500/50 rounded-xl text-left transition-all group flex items-center justify-between cursor-pointer shadow-md"
+                >
+                  <div>
+                    <span className="text-[9.5px] text-slate-400 uppercase font-bold block font-sans tracking-wider">Pending Deposits</span>
+                    <span className="text-xl font-black text-amber-400">{pendingDeposits.length} Claims</span>
+                  </div>
+                  <span className="px-3 py-1 bg-amber-500/10 text-amber-400 rounded-lg text-[10px] font-bold group-hover:bg-amber-500 group-hover:text-slate-950 transition-all border border-amber-500/20">
+                    Review →
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setAdminTab('withdrawals')}
+                  className="p-4 bg-slate-950/90 border border-slate-800 hover:border-rose-500/50 rounded-xl text-left transition-all group flex items-center justify-between cursor-pointer shadow-md"
+                >
+                  <div>
+                    <span className="text-[9.5px] text-slate-400 uppercase font-bold block font-sans tracking-wider">Pending Withdrawals</span>
+                    <span className="text-xl font-black text-rose-400">{pendingWithdrawals.length} Requests</span>
+                  </div>
+                  <span className="px-3 py-1 bg-rose-500/10 text-rose-400 rounded-lg text-[10px] font-bold group-hover:bg-rose-500 group-hover:text-white transition-all border border-rose-500/20">
+                    Review →
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUserKycFilter('Under Review');
+                    setAdminTab('users');
+                  }}
+                  className="p-4 bg-slate-950/90 border border-amber-500/50 hover:border-amber-400 rounded-xl text-left transition-all group flex items-center justify-between cursor-pointer shadow-md"
+                >
+                  <div>
+                    <span className="text-[9.5px] text-amber-300 uppercase font-bold block font-sans tracking-wider">Under Review KYC</span>
+                    <span className="text-xl font-black text-amber-400">{stats.kycUnderReviewCount} Submissions</span>
+                  </div>
+                  <span className="px-3 py-1 bg-amber-500 text-slate-950 rounded-lg text-[10px] font-extrabold group-hover:bg-amber-400 transition-all shadow-sm">
+                    Filter →
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setAdminTab('inquiries')}
+                  className="p-4 bg-slate-950/90 border border-slate-800 hover:border-indigo-500/50 rounded-xl text-left transition-all group flex items-center justify-between cursor-pointer shadow-md"
+                >
+                  <div>
+                    <span className="text-[9px] text-slate-400 uppercase font-bold block font-sans">Pending Inquiries</span>
+                    <span className="text-lg font-black text-indigo-400">{inquiries.filter(i => i.status === 'Pending').length} Messages</span>
+                  </div>
+                  <span className="px-2.5 py-1 bg-indigo-500/10 text-indigo-400 rounded-lg text-[10px] font-bold group-hover:bg-indigo-500 group-hover:text-white transition-all">
+                    Reply →
+                  </span>
+                </button>
 
               </div>
             </div>
@@ -699,8 +1030,9 @@ export default function AdminPanel({
               </p>
               <div className="flex space-x-2">
                 <button
+                  type="button"
                   onClick={() => alert("Diagnostic verification successful! Heuristic check shows 0 mismatched balances or duplicate TxIDs.")}
-                  className="px-3.5 py-1.5 bg-slate-950 border border-slate-805 hover:border-slate-700 text-[10px] font-mono rounded-xl font-bold uppercase tracking-wider text-amber-400"
+                  className="px-3.5 py-1.5 bg-slate-950 border border-slate-805 hover:border-slate-700 text-[10px] font-mono rounded-xl font-bold uppercase tracking-wider text-amber-400 cursor-pointer"
                 >
                   Verify ledger checksums
                 </button>
@@ -1648,6 +1980,31 @@ export default function AdminPanel({
 
         {/* ==================== TAB 5: USERS DIRECTORY ==================== */}
         {adminTab === 'users' && (() => {
+          const filteredUsers = usersList.filter((usr) => {
+            // KYC status filter
+            if (userKycFilter !== 'All') {
+              const status = usr.kycStatus || (usr.isKycVerified ? 'Verified' : 'Unverified');
+              if (userKycFilter === 'Unverified') {
+                if (usr.kycStatus && usr.kycStatus !== 'Unverified') return false;
+                if (usr.isKycVerified && usr.kycStatus !== 'Unverified') return false;
+              } else if (status !== userKycFilter) {
+                return false;
+              }
+            }
+            // Search filter
+            if (userSearchTerm.trim()) {
+              const q = userSearchTerm.trim().toLowerCase();
+              const email = (usr.email || '').toLowerCase();
+              const name = (usr.name || '').toLowerCase();
+              const country = (usr.kycCountry || '').toLowerCase();
+              const fullKycName = (usr.kycFullName || '').toLowerCase();
+              if (!email.includes(q) && !name.includes(q) && !country.includes(q) && !fullKycName.includes(q)) {
+                return false;
+              }
+            }
+            return true;
+          });
+
           const renderUserAdminConsole = (usr: UserAccount) => (
             <div className="bg-slate-950 border border-slate-850 rounded-2xl p-3 sm:p-5 space-y-4 shadow-2xl max-w-full overflow-hidden">
               {/* Header */}
@@ -2144,9 +2501,9 @@ export default function AdminPanel({
 
                     {/* Direct Referrals List */}
                     {(() => {
-                      const userRefs = usersList.filter(u => u.referredBy?.trim().toUpperCase() === usr.referralCode?.trim().toUpperCase());
+                      const userRefs = usersList.filter(u => u.referredBy === usr.referralCode);
                       return (
-                        <div className="p-3 bg-slate-900 border border-slate-850 rounded-xl space-y-2">
+                        <div className="p-3 bg-slate-900 border border-slate-850 rounded-xl space-y-2 font-sans">
                           <span className="text-[9px] uppercase font-mono font-bold text-slate-400 block">Direct Referrals Hierarchy ({userRefs.length})</span>
                           {userRefs.length === 0 ? (
                             <span className="text-slate-500 italic text-[11px] block">No active referrals found under this sponsor.</span>
@@ -2326,11 +2683,72 @@ export default function AdminPanel({
 
           return (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-mono font-bold tracking-wider uppercase text-slate-400 block">
-                  👥 User Accounts Ledger ({usersList.length})
-                </span>
+              {/* Header with Filter & Search Toolbar */}
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-slate-900/90 p-3.5 sm:p-4 border border-slate-800 rounded-2xl shadow-lg max-w-full overflow-hidden">
+                <div className="min-w-0">
+                  <span className="text-[10px] sm:text-xs font-mono font-bold tracking-wider uppercase text-slate-300 block truncate">
+                    👥 User Accounts Ledger ({filteredUsers.length} of {usersList.length})
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-sans block truncate">
+                    {userKycFilter !== 'All' ? `Filtered by KYC Status: ${userKycFilter}` : 'Showing all registered user records'}
+                  </span>
+                </div>
+
+                {/* Filter buttons & Search */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 max-w-full overflow-hidden">
+                  <div className="flex items-center bg-slate-950 p-1 sm:p-1.5 rounded-xl border border-slate-800 gap-1 text-[10px] font-mono font-bold max-w-full overflow-x-auto no-scrollbar whitespace-nowrap">
+                    <Filter className="w-3.5 h-3.5 text-slate-500 ml-1 shrink-0" />
+                    {(['All', 'Verified', 'Under Review', 'Unverified', 'Rejected'] as const).map((filterOpt) => (
+                      <button
+                        key={filterOpt}
+                        type="button"
+                        onClick={() => setUserKycFilter(filterOpt)}
+                        className={`px-2.5 py-1 rounded-lg uppercase tracking-wider transition-all cursor-pointer shrink-0 whitespace-nowrap ${
+                          userKycFilter === filterOpt
+                            ? filterOpt === 'Under Review'
+                              ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
+                              : filterOpt === 'Verified'
+                              ? 'bg-emerald-500 text-slate-950 font-black shadow-sm'
+                              : filterOpt === 'Rejected'
+                              ? 'bg-rose-500 text-white font-black shadow-sm'
+                              : 'bg-indigo-600 text-white font-black shadow-sm'
+                            : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                        }`}
+                      >
+                        {filterOpt}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="relative w-full sm:w-56 min-w-0 shrink-0">
+                    <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
+                    <input
+                      type="text"
+                      placeholder="Search email, name..."
+                      value={userSearchTerm}
+                      onChange={(e) => setUserSearchTerm(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-8 pr-3 py-1.5 text-[10px] text-white font-mono placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
               </div>
+
+              {/* Banner when filter active */}
+              {userKycFilter === 'Under Review' && (
+                <div className="p-3.5 bg-amber-500/15 border border-amber-500/40 text-amber-300 rounded-xl text-xs font-sans font-bold flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shadow-md">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span className="leading-snug">Active Filter: Displaying {filteredUsers.length} user(s) with <strong>Under Review</strong> KYC identity submissions. Expand console to approve or reject.</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setUserKycFilter('All')}
+                    className="text-slate-300 hover:text-white text-[10px] uppercase font-mono font-bold underline cursor-pointer shrink-0 sm:ml-2"
+                  >
+                    Reset Filter
+                  </button>
+                </div>
+              )}
 
               {actionToast && (
                 <div className="p-3 bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 rounded-xl text-xs font-sans font-bold flex items-center justify-between shadow-md animate-fadeIn">
@@ -2342,174 +2760,193 @@ export default function AdminPanel({
                 </div>
               )}
 
-              {/* Mobile Card Layout (visible on mobile screens < md) */}
-              <div className="block md:hidden space-y-3">
-                {usersList.map((usr) => {
-                  const isExpanded = expandedUserId === usr.id;
-                  return (
-                    <div key={`mob-usr-${usr.id}`} className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 space-y-3 font-sans text-xs">
-                      {/* Mobile Card Header */}
-                      <div className="flex items-start justify-between gap-2 pb-2 border-b border-slate-800">
-                        <div className="min-w-0">
-                          <span className="text-white font-bold text-xs block truncate" title={usr.email}>{usr.email}</span>
-                          <div className="flex items-center gap-1.5 mt-0.5 font-mono text-[9.5px] text-slate-400">
-                            <span>Name: <strong className="text-slate-200">{usr.name || 'N/A'}</strong></span>
+              {filteredUsers.length === 0 ? (
+                <div className="p-8 text-center bg-slate-900 border border-slate-800 rounded-2xl space-y-2">
+                  <User className="w-8 h-8 text-slate-600 mx-auto" />
+                  <p className="text-slate-300 font-bold text-xs font-sans">No users found matching current filter ({userKycFilter}) or search query.</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUserKycFilter('All');
+                      setUserSearchTerm('');
+                    }}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-400 text-[10px] font-mono uppercase font-bold rounded-lg cursor-pointer"
+                  >
+                    Clear Search Filters
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* Mobile Card Layout (visible on mobile screens < md) */}
+                  <div className="block md:hidden space-y-3">
+                    {filteredUsers.map((usr) => {
+                      const isExpanded = expandedUserId === usr.id;
+                      return (
+                        <div key={`mob-usr-${usr.id}`} className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 space-y-3 font-sans text-xs">
+                          {/* Mobile Card Header */}
+                          <div className="flex items-start justify-between gap-2 pb-2 border-b border-slate-800">
+                            <div className="min-w-0">
+                              <span className="text-white font-bold text-xs block truncate" title={usr.email}>{usr.email}</span>
+                              <div className="flex items-center gap-1.5 mt-0.5 font-mono text-[9.5px] text-slate-400">
+                                <span>Name: <strong className="text-slate-200">{usr.name || 'N/A'}</strong></span>
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end gap-1 shrink-0">
+                              <span className={`px-2 py-0.5 rounded text-[8px] uppercase tracking-wider font-mono font-bold ${
+                                usr.isDeactivated ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30' : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                              }`}>
+                                {usr.isDeactivated ? 'Deactivated' : 'Active'}
+                              </span>
+                              <span className={`px-2 py-0.5 rounded text-[8px] uppercase tracking-wider font-mono font-bold ${
+                                usr.kycStatus === 'Verified' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/25' :
+                                usr.kycStatus === 'Under Review' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/25' :
+                                usr.kycStatus === 'Rejected' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/25' :
+                                'bg-slate-800 text-slate-400 border border-slate-700'
+                              }`}>
+                                KYC: {usr.kycStatus || 'Unverified'}
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                        <div className="flex flex-col items-end gap-1 shrink-0">
-                          <span className={`px-2 py-0.5 rounded text-[8px] uppercase tracking-wider font-mono font-bold ${
-                            usr.isDeactivated ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30' : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                          }`}>
-                            {usr.isDeactivated ? 'Deactivated' : 'Active'}
-                          </span>
-                          <span className={`px-2 py-0.5 rounded text-[8px] uppercase tracking-wider font-mono font-bold ${
-                            usr.kycStatus === 'Verified' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/25' :
-                            usr.kycStatus === 'Under Review' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/25' :
-                            usr.kycStatus === 'Rejected' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/25' :
-                            'bg-slate-800 text-slate-400 border border-slate-700'
-                          }`}>
-                            KYC: {usr.kycStatus || 'Unverified'}
-                          </span>
-                        </div>
-                      </div>
 
-                      {/* Stats Grid */}
-                      <div className="grid grid-cols-2 gap-2 bg-slate-950 p-2.5 rounded-xl border border-slate-850 text-[10px] font-mono">
-                        <div>
-                          <span className="text-slate-500 block uppercase text-[8px]">Active Balance</span>
-                          <span className="font-bold text-amber-300">${(usr.balance || 0).toFixed(2)}</span>
-                        </div>
-                        <div>
-                          <span className="text-slate-500 block uppercase text-[8px]">Total Deposited</span>
-                          <span className="font-semibold text-emerald-400">${(usr.totalDeposited || 0).toFixed(2)}</span>
-                        </div>
-                        <div>
-                          <span className="text-slate-500 block uppercase text-[8px]">Total Withdrawn</span>
-                          <span className="font-semibold text-rose-400">${(usr.totalWithdrawn || 0).toFixed(2)}</span>
-                        </div>
-                        <div>
-                          <span className="text-slate-500 block uppercase text-[8px]">Total Invested</span>
-                          <span className="font-semibold text-slate-200">${(usr.totalInvestment || 0).toFixed(2)}</span>
-                        </div>
-                      </div>
-
-                      {/* Manage Toggle Button */}
-                      <button
-                        id={`manage-user-mob-btn-${usr.id}`}
-                        type="button"
-                        onClick={() => {
-                          if (isExpanded) {
-                            setExpandedUserId(null);
-                          } else {
-                            setExpandedUserId(usr.id);
-                            setAdjustAmount(50);
-                          }
-                        }}
-                        className={`w-full py-2 text-[10px] font-bold uppercase font-mono tracking-wider rounded-xl border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                          isExpanded 
-                            ? 'bg-amber-500/10 border-amber-500/40 text-amber-400' 
-                            : 'bg-slate-950 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
-                        }`}
-                      >
-                        <span>🔧 {isExpanded ? 'Close Admin Console' : 'Manage User & KYC Details'}</span>
-                      </button>
-
-                      {/* Expanded Mobile Console */}
-                      {isExpanded && renderUserAdminConsole(usr)}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Desktop Table View (visible on md+) */}
-              <div className="hidden md:block w-full overflow-x-auto bg-slate-900 border border-slate-800 rounded-2xl font-mono text-[10px]">
-                <table className="w-full text-left border-collapse min-w-[1200px]">
-                  <thead>
-                    <tr className="bg-slate-950 text-slate-400 border-b border-slate-850 uppercase text-[8px] font-bold text-center animate-none whitespace-nowrap">
-                      <th className="p-3 text-left">Account Email</th>
-                      <th className="p-3 text-left">Investor Name</th>
-                      <th className="p-3">Status</th>
-                      <th className="p-3">KYC Status</th>
-                      <th className="p-3">Active Balance</th>
-                      <th className="p-3">Total Deposited</th>
-                      <th className="p-3">Total Withdrawn</th>
-                      <th className="p-3">Total Invested</th>
-                      <th className="p-3">Total Profits</th>
-                      <th className="p-3">Referral Code</th>
-                      <th className="p-3">Referred By</th>
-                      <th className="p-3">Registration Date</th>
-                      <th className="p-3">Action Desk</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-850 text-slate-350 text-center">
-                    {usersList.map((usr) => [
-                      <tr key={usr.id} className="hover:bg-slate-850/20 whitespace-nowrap text-[10px]">
-                        <td className="p-3 text-left text-white font-semibold">
-                          <div className="flex flex-col">
-                            <span>{usr.email}</span>
-                            <span className="text-[8px] text-slate-500 font-mono">ID: {usr.id}</span>
+                          {/* Stats Grid */}
+                          <div className="grid grid-cols-2 gap-2 bg-slate-950 p-2.5 rounded-xl border border-slate-850 text-[10px] font-mono">
+                            <div>
+                              <span className="text-slate-500 block uppercase text-[8px]">Active Balance</span>
+                              <span className="font-bold text-amber-300">${(usr.balance || 0).toFixed(2)}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 block uppercase text-[8px]">Total Deposited</span>
+                              <span className="font-semibold text-emerald-400">${(usr.totalDeposited || 0).toFixed(2)}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 block uppercase text-[8px]">Total Withdrawn</span>
+                              <span className="font-semibold text-rose-400">${(usr.totalWithdrawn || 0).toFixed(2)}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 block uppercase text-[8px]">Total Invested</span>
+                              <span className="font-semibold text-slate-200">${(usr.totalInvestment || 0).toFixed(2)}</span>
+                            </div>
                           </div>
-                        </td>
-                        <td className="p-3 text-left text-slate-400 font-sans">{usr.name || 'N/A'}</td>
-                        <td className="p-3">
-                          <span className={`px-2 py-0.5 rounded text-[8px] uppercase tracking-wider font-sans font-bold ${
-                            usr.isDeactivated ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30' : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                          }`}>
-                            {usr.isDeactivated ? 'Deactivated' : 'Active'}
-                          </span>
-                        </td>
-                        <td className="p-3">
-                          <span className={`px-2 py-0.5 rounded text-[8px] uppercase tracking-wider font-sans font-bold ${
-                            usr.kycStatus === 'Verified' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/25' :
-                            usr.kycStatus === 'Under Review' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/25' :
-                            usr.kycStatus === 'Rejected' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/25' :
-                            'bg-slate-800 text-slate-400 border border-slate-700'
-                          }`}>
-                            {usr.kycStatus || 'Unverified'}
-                          </span>
-                        </td>
-                        <td className="p-3 font-bold text-amber-300 font-mono">${(usr.balance || 0).toFixed(2)}</td>
-                        <td className="p-3 text-emerald-400 font-mono font-semibold">${(usr.totalDeposited || 0).toFixed(2)}</td>
-                        <td className="p-3 text-rose-400 font-mono font-semibold">${(usr.totalWithdrawn || 0).toFixed(2)}</td>
-                        <td className="p-3 text-slate-200 font-mono font-semibold">${(usr.totalInvestment || 0).toFixed(2)}</td>
-                        <td className="p-3 text-emerald-300 font-mono font-semibold">${(usr.totalProfitEarned || 0).toFixed(2)}</td>
-                        <td className="p-3 text-amber-400 text-xs font-bold font-mono uppercase tracking-wider">{usr.referralCode}</td>
-                        <td className="p-3 text-slate-500 font-mono">{usr.referredBy || 'None'}</td>
-                        <td className="p-3 text-slate-400 font-mono text-[9px]">{usr.registrationDate ? usr.registrationDate.split('T')[0] : 'N/A'}</td>
-                        <td className="p-3">
+
+                          {/* Manage Toggle Button */}
                           <button
-                            id={`manage-user-btn-${usr.id}`}
+                            id={`manage-user-mob-btn-${usr.id}`}
                             type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (expandedUserId === usr.id) {
+                            onClick={() => {
+                              if (isExpanded) {
                                 setExpandedUserId(null);
                               } else {
                                 setExpandedUserId(usr.id);
                                 setAdjustAmount(50);
                               }
                             }}
-                            className={`px-2.5 py-1 text-[9px] font-bold uppercase font-mono tracking-wider rounded-lg border transition-all cursor-pointer ${
-                              expandedUserId === usr.id 
+                            className={`w-full py-2 text-[10px] font-bold uppercase font-mono tracking-wider rounded-xl border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                              isExpanded 
                                 ? 'bg-amber-500/10 border-amber-500/40 text-amber-400' 
                                 : 'bg-slate-950 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
                             }`}
                           >
-                            {expandedUserId === usr.id ? 'Close' : '🔧 Manage'}
+                            <span>🔧 {isExpanded ? 'Close Admin Console' : 'Manage User & KYC Details'}</span>
                           </button>
-                        </td>
-                      </tr>,
-                      expandedUserId === usr.id && (
-                        <tr key={`expansion-${usr.id}`} className="bg-slate-950/80 font-sans text-xs">
-                          <td colSpan={13} className="p-2 sm:p-4 text-left border-t border-b border-slate-800">
-                            {renderUserAdminConsole(usr)}
-                          </td>
+
+                          {/* Expanded Mobile Console */}
+                          {isExpanded && renderUserAdminConsole(usr)}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Desktop Table View (visible on md+) */}
+                  <div className="hidden md:block w-full overflow-x-auto bg-slate-900 border border-slate-800 rounded-2xl font-mono text-[10px]">
+                    <table className="w-full text-left border-collapse min-w-[1200px]">
+                      <thead>
+                        <tr className="bg-slate-950 text-slate-400 border-b border-slate-850 uppercase text-[8px] font-bold text-center animate-none whitespace-nowrap">
+                          <th className="p-3 text-left">Account Email</th>
+                          <th className="p-3 text-left">Investor Name</th>
+                          <th className="p-3">Status</th>
+                          <th className="p-3">KYC Status</th>
+                          <th className="p-3">Active Balance</th>
+                          <th className="p-3">Total Deposited</th>
+                          <th className="p-3">Total Withdrawn</th>
+                          <th className="p-3">Total Invested</th>
+                          <th className="p-3">Total Profits</th>
+                          <th className="p-3">Referral Code</th>
+                          <th className="p-3">Referred By</th>
+                          <th className="p-3">Registration Date</th>
+                          <th className="p-3">Action Desk</th>
                         </tr>
-                      )
-                    ])}
-                  </tbody>
-                </table>
-              </div>
+                      </thead>
+                      <tbody className="divide-y divide-slate-850 text-slate-350 text-center">
+                        {filteredUsers.map((usr) => [
+                          <tr key={usr.id} className="hover:bg-slate-850/20 whitespace-nowrap text-[10px]">
+                            <td className="p-3 text-left text-white font-semibold">
+                              <div className="flex flex-col">
+                                <span>{usr.email}</span>
+                                <span className="text-[8px] text-slate-500 font-mono">ID: {usr.id}</span>
+                              </div>
+                            </td>
+                            <td className="p-3 text-left text-slate-400 font-sans">{usr.name || 'N/A'}</td>
+                            <td className="p-3">
+                              <span className={`px-2 py-0.5 rounded text-[8px] uppercase tracking-wider font-sans font-bold ${
+                                usr.isDeactivated ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30' : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                              }`}>
+                                {usr.isDeactivated ? 'Deactivated' : 'Active'}
+                              </span>
+                            </td>
+                            <td className="p-3">
+                              <span className={`px-2 py-0.5 rounded text-[8px] uppercase tracking-wider font-sans font-bold ${
+                                usr.kycStatus === 'Verified' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/25' :
+                                usr.kycStatus === 'Under Review' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/25' :
+                                usr.kycStatus === 'Rejected' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/25' :
+                                'bg-slate-800 text-slate-400 border border-slate-700'
+                              }`}>
+                                {usr.kycStatus || 'Unverified'}
+                              </span>
+                            </td>
+                            <td className="p-3 font-bold text-amber-300 font-mono">${(usr.balance || 0).toFixed(2)}</td>
+                            <td className="p-3 text-emerald-400 font-mono font-semibold">${(usr.totalDeposited || 0).toFixed(2)}</td>
+                            <td className="p-3 text-rose-400 font-mono font-semibold">${(usr.totalWithdrawn || 0).toFixed(2)}</td>
+                            <td className="p-3 text-slate-200 font-mono font-semibold">${(usr.totalInvestment || 0).toFixed(2)}</td>
+                            <td className="p-3 text-emerald-300 font-mono font-semibold">${(usr.totalProfitEarned || 0).toFixed(2)}</td>
+                            <td className="p-3 text-amber-400 text-xs font-bold font-mono uppercase tracking-wider">{usr.referralCode}</td>
+                            <td className="p-3 text-slate-500 font-mono">{usr.referredBy || 'None'}</td>
+                            <td className="p-3 text-slate-400 font-mono text-[9px]">{usr.registrationDate ? usr.registrationDate.split('T')[0] : 'N/A'}</td>
+                            <td className="p-3">
+                              <button
+                                id={`manage-user-btn-${usr.id}`}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (expandedUserId === usr.id) {
+                                    setExpandedUserId(null);
+                                  } else {
+                                    setExpandedUserId(usr.id);
+                                    setAdjustAmount(50);
+                                  }
+                                }}
+                                className={`px-2.5 py-1 text-[9px] font-bold uppercase font-mono tracking-wider rounded-lg border transition-all cursor-pointer ${
+                                  expandedUserId === usr.id 
+                                    ? 'bg-amber-500/10 border-amber-500/40 text-amber-400' 
+                                    : 'bg-slate-950 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
+                                }`}
+                              >
+                                {expandedUserId === usr.id ? 'Close' : '🔧 Manage'}
+                              </button>
+                            </td>
+                          </tr>,
+                          expandedUserId === usr.id && (
+                            <tr key={`expansion-${usr.id}`} className="bg-slate-950/80 font-sans text-xs">
+                              <td colSpan={13} className="p-2 sm:p-4 text-left border-t border-b border-slate-800">
+                                {renderUserAdminConsole(usr)}
+                              </td>
+                            </tr>
+                          )
+                        ])}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
             </div>
           );
         })()}
