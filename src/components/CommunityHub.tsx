@@ -333,6 +333,34 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
     }
   }, []);
 
+// Helper function to check if a message belongs to a DM channel
+const isMessageInDmChannel = (m: CommunityMessage, targetChanId: string, currentUserId?: string, currentUserEmail?: string): boolean => {
+  if (!m || !m.channelId) return false;
+  if (m.channelId === targetChanId) return true;
+  if (!targetChanId.startsWith('dm-')) return false;
+
+  const getTargetBase = (cid: string) => {
+    if (cid.includes('ethan-ceo')) return 'ethan-ceo';
+    if (cid.includes('admin-1') || cid.includes('support')) return 'admin-1';
+    if (cid.includes('ai-assistant') || cid.includes('ai-bot')) return 'ai-assistant';
+    return '';
+  };
+
+  const targetBase = getTargetBase(targetChanId);
+  const mTargetBase = getTargetBase(m.channelId);
+
+  if (!targetBase || targetBase !== mTargetBase) return false;
+
+  const userPart = targetChanId.replace(`dm-${targetBase}-`, '').replace(`dm-${targetBase}`, '');
+
+  if (m.channelId === `dm-${targetBase}`) {
+    if (userPart && (m.senderId === userPart || (currentUserId && userPart === currentUserId) || m.senderEmail === currentUserEmail)) return true;
+    if (m.senderId === 'ethan-ceo' || m.senderId === 'admin-1' || m.senderId === 'ai-assistant') return true;
+  }
+
+  return false;
+};
+
   const userDmThreads = useMemo(() => {
     const dmMap = new Map<string, CommunityMessage>();
 
@@ -356,10 +384,18 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
 
     allDms.forEach(m => {
       if (!m.channelId || !m.channelId.startsWith('dm-')) return;
-      if (!grouped.has(m.channelId)) {
-        grouped.set(m.channelId, []);
+      
+      let canonicalChanId = m.channelId;
+      if (m.channelId === 'dm-ethan-ceo' || m.channelId === 'dm-admin-1' || m.channelId === 'dm-ai-assistant') {
+        if (m.senderId && m.senderId !== 'ethan-ceo' && m.senderId !== 'admin-1' && m.senderId !== 'ai-assistant') {
+          canonicalChanId = `${m.channelId}-${m.senderId}`;
+        }
       }
-      grouped.get(m.channelId)!.push(m);
+
+      if (!grouped.has(canonicalChanId)) {
+        grouped.set(canonicalChanId, []);
+      }
+      grouped.get(canonicalChanId)!.push(m);
     });
 
     const threads: Array<{
@@ -619,13 +655,17 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
 
   // Sync Messages from Firestore or Fallback
   useEffect(() => {
-    const initialForChan = INITIAL_MESSAGES[activeChannelId] || [];
-    const localDmsForChan = getStoredLocalDms().filter(m => 
-      m.channelId === activeChannelId || 
-      (activeChannelId.startsWith('dm-') && m.channelId && m.channelId === activeChannelId)
-    );
+    // Auto-canonicalize bare DM channel for non-admin users
+    if (!isAdmin && activeChannelId.startsWith('dm-') && !activeChannelId.includes(effectiveUser.id)) {
+      const canonical = `${activeChannelId}-${effectiveUser.id}`;
+      setActiveChannelId(canonical);
+      return;
+    }
+
+    const initialForChan = (INITIAL_MESSAGES[activeChannelId] || []).filter(m => isMessageInDmChannel(m, activeChannelId, effectiveUser.id, effectiveUser.email));
+    const localDmsForChan = getStoredLocalDms().filter(m => isMessageInDmChannel(m, activeChannelId, effectiveUser.id, effectiveUser.email));
     const dmsForChan = activeChannelId.startsWith('dm-') 
-      ? allDmMessages.filter(m => m.channelId === activeChannelId) 
+      ? allDmMessages.filter(m => isMessageInDmChannel(m, activeChannelId, effectiveUser.id, effectiveUser.email)) 
       : [];
 
     const mergeAndSet = (firestoreMsgs: CommunityMessage[] = []) => {
@@ -633,7 +673,11 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
       initialForChan.forEach(m => msgMap.set(m.id, m));
       localDmsForChan.forEach(m => msgMap.set(m.id, m));
       dmsForChan.forEach(m => msgMap.set(m.id, m));
-      firestoreMsgs.forEach(m => msgMap.set(m.id, m));
+      firestoreMsgs.forEach(m => {
+        if (isMessageInDmChannel(m, activeChannelId, effectiveUser.id, effectiveUser.email) || !activeChannelId.startsWith('dm-')) {
+          msgMap.set(m.id, m);
+        }
+      });
 
       // Synthesize user inquiry message if no user message exists in this DM channel yet
       if (activeChannelId.startsWith('dm-')) {
@@ -826,7 +870,7 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
     // 3. Save to Firestore messages collection using setDoc with fixed id
     if (db) {
       try {
-        await setDoc(doc(db, 'messages', fullMsg.id), fullMsg);
+        await setDoc(doc(db, 'messages', fullMsg.id), cleanPayloadForFirestore(fullMsg));
       } catch (err) {
         console.warn("[Firestore Save Message Warning]", err);
       }
@@ -952,22 +996,7 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
         isAiGenerated: true
       };
 
-      if (!INITIAL_MESSAGES[channelId]) INITIAL_MESSAGES[channelId] = [];
-      if (!INITIAL_MESSAGES[channelId].some(m => m.id === aiMsg.id)) {
-        INITIAL_MESSAGES[channelId].push(aiMsg);
-      }
-      setMessages(prev => {
-        if (prev.some(m => m.id === aiMsg.id)) return prev;
-        const updated = [...prev, aiMsg];
-        return updated.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-      });
-      if (db) {
-        try {
-          await setDoc(doc(db, 'messages', aiMsg.id), aiMsg);
-        } catch (err) {
-          console.warn("[Firestore AI Save Warning]", err);
-        }
-      }
+      await saveMessage(aiMsg);
     }, 600);
   };
 
@@ -1018,9 +1047,15 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({
       }
     }
 
+    let targetChannelId = activeChannelId;
+    if (!isAdmin && targetChannelId.startsWith('dm-') && !targetChannelId.includes(effectiveUser.id)) {
+      targetChannelId = `${targetChannelId}-${effectiveUser.id}`;
+      setActiveChannelId(targetChannelId);
+    }
+
     const newMsg: CommunityMessage = {
       id: `msg-${Date.now()}`,
-      channelId: activeChannelId,
+      channelId: targetChannelId,
       senderId,
       senderName,
       senderEmail,

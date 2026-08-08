@@ -780,3 +780,21 @@ export const deleteInquiryFromFirebase = async (id: string) => {
   }
 };
 
+export const subscribeToInquiriesCollection = (callback: (inquiries: Inquiry[]) => void) => {
+  if (!isFirebaseEnabled()) return () => {};
+  try {
+    logFirestoreOp('LISTEN', 'inquiries', 'COLLECTION_SUBSCRIPTION');
+    const colRef = collection(db, 'inquiries');
+    return onSnapshot(colRef, (snapshot) => {
+      const inquiries = snapshot.docs.map(d => d.data() as Inquiry);
+      const sorted = inquiries.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+      callback(sorted);
+    }, (error) => {
+      console.error('Error in inquiries real-time listener:', error);
+    });
+  } catch (e) {
+    console.error('Failed to set up inquiries real-time listener:', e);
+    return () => {};
+  }
+};
+

@@ -50,7 +50,8 @@ import {
   subscribeToProjectsCollection,
   subscribeToClaimsCollection,
   subscribeToSecurityLogsCollection,
-  subscribeToSystemSettings
+  subscribeToSystemSettings,
+  subscribeToInquiriesCollection
 } from './lib/firebaseSync';
 import { sendDepositEmail, sendWithdrawalEmail, sendKycEmail } from './lib/emailService';
 import { isNativeAppContainer } from './utils/nativeApp';
@@ -810,6 +811,12 @@ export default function App() {
       }
     });
 
+    const unsubInquiries = subscribeToInquiriesCollection((liveInquiries) => {
+      if (liveInquiries !== undefined) {
+        setInquiriesList(liveInquiries);
+      }
+    });
+
     return () => {
       unsubUsers();
       unsubTxs();
@@ -818,6 +825,7 @@ export default function App() {
       unsubClaims();
       unsubLogs();
       unsubSettings();
+      unsubInquiries();
     };
   }, []);
 

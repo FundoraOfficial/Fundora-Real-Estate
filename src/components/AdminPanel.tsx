@@ -153,8 +153,16 @@ export default function AdminPanel({
     if (!replyText.trim() && !adminReplyAttachment) return;
     setReplyingStatus('Sending executive response...');
 
-    // Use target DM channel ID from inquiry record or default
-    const channelId = inq.channelId || (inq.message.toLowerCase().includes('support') ? 'dm-admin-1' : 'dm-ethan-ceo');
+    // Use target DM channel ID from inquiry record or construct canonical channel ID
+    let channelId = inq.channelId;
+    if (!channelId) {
+      if (inq.id && inq.id.startsWith('inq-dm-')) {
+        channelId = inq.id.replace(/^inq-dm-/, '');
+      } else {
+        const targetBase = inq.message.toLowerCase().includes('support') ? 'admin-1' : 'ethan-ceo';
+        channelId = `dm-${targetBase}-${inq.id || 'user'}`;
+      }
+    }
 
     const replyMsg = {
       id: `msg-reply-${Date.now()}`,
@@ -183,10 +191,11 @@ export default function AdminPanel({
       }
 
       if (db) {
-        await setDoc(doc(db, 'messages', replyMsg.id), replyMsg);
+        await setDoc(doc(db, 'messages', replyMsg.id), cleanPayloadForFirestore(replyMsg));
         await setDoc(doc(db, 'inquiries', inq.id), cleanPayloadForFirestore({
           ...inq,
           status: 'Resolved',
+          channelId,
           message: `${inq.message}\n\n✅ [Executive Reply]: ${replyText || 'Attachment Sent'}`
         }));
       }
@@ -195,6 +204,7 @@ export default function AdminPanel({
         onUpdateInquiry({
           ...inq,
           status: 'Resolved',
+          channelId,
           message: `${inq.message}\n\n✅ [Executive Reply]: ${replyText || 'Attachment Sent'}`
         });
       }
