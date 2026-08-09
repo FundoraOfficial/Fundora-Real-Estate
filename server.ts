@@ -199,10 +199,48 @@ If you have any questions, contact support at <a href="mailto:fundora.one@gmail.
 </body>
 </html>`;
 
-    // 1. Check Gmail / Custom SMTP credentials (Nodemailer)
-    const smtpUser = (process.env.GMAIL_USER || process.env.SMTP_USER || "fundora.one@gmail.com").trim();
-    const rawSmtpPass = (process.env.GMAIL_PASS || process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS || "idlxkzgnchbucgjr").trim();
-    // Gmail App Passwords work best without spaces
+    // 1. Check Resend API Key FIRST (Highest priority for fast, reliable delivery)
+    const resendApiKey = (process.env.RESEND_API_KEY || process.env.VITE_RESEND_API_KEY || "").trim();
+    let resendFromEmail = (process.env.RESEND_FROM_EMAIL || process.env.VITE_RESEND_FROM_EMAIL || "no-reply@fundora.one").trim();
+
+    // Resend requires verified domains like fundora.one or onboarding@resend.dev. Resend strictly rejects @gmail.com as a 'from' address.
+    if (!resendFromEmail || resendFromEmail.toLowerCase().includes("gmail.com") || resendFromEmail.toLowerCase().includes("yahoo.com") || resendFromEmail.toLowerCase().includes("hotmail.com")) {
+      resendFromEmail = "no-reply@fundora.one";
+    }
+
+    if (isValidResendApiKey(resendApiKey)) {
+      console.log(`[Email Server] Dispatching notification email (${subject}) to ${toEmail} via Resend (from: ${resendFromEmail})...`);
+      try {
+        const response = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${resendApiKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            from: `Fundora <${resendFromEmail}>`,
+            to: [toEmail],
+            subject: subject,
+            html: htmlContent
+          })
+        });
+
+        if (response.ok) {
+          const responseData = await response.json();
+          console.log(`[Email Server] Notification email sent successfully to ${toEmail} via Resend:`, responseData);
+          return res.json({ success: true, via: "resend", data: responseData });
+        } else {
+          const errText = await response.text();
+          console.warn(`[Email Server] Resend API error status ${response.status}:`, errText);
+        }
+      } catch (resendErr: any) {
+        console.warn(`[Email Server] Resend API exception:`, resendErr?.message || resendErr);
+      }
+    }
+
+    // 2. Secondary: Check Gmail / Custom SMTP credentials (Nodemailer) if explicitly configured
+    const smtpUser = (process.env.GMAIL_USER || process.env.SMTP_USER || "").trim();
+    const rawSmtpPass = (process.env.GMAIL_PASS || process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS || "").trim();
     const smtpPass = rawSmtpPass.includes(" ") ? rawSmtpPass.replace(/\s+/g, "") : rawSmtpPass;
     const smtpHost = (process.env.SMTP_HOST || "smtp.gmail.com").trim();
     const smtpPort = parseInt(process.env.SMTP_PORT || "465", 10);
@@ -244,37 +282,6 @@ If you have any questions, contact support at <a href="mailto:fundora.one@gmail.
         } else {
           console.warn(`[Email Server] SMTP Delivery failed:`, errMsg);
         }
-      }
-    }
-
-    // 2. Check Resend API Key
-    const resendApiKey = (process.env.RESEND_API_KEY || process.env.VITE_RESEND_API_KEY || "").trim();
-    const resendFromEmail = (process.env.RESEND_FROM_EMAIL || process.env.VITE_RESEND_FROM_EMAIL || "fundora.one@gmail.com").trim();
-
-    if (isValidResendApiKey(resendApiKey)) {
-      console.log(`[Email Server] Dispatching notification email (${subject}) to ${toEmail} via Resend...`);
-      try {
-        const response = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${resendApiKey}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            from: `Fundora <${resendFromEmail}>`,
-            to: [toEmail],
-            subject: subject,
-            html: htmlContent
-          })
-        });
-
-        if (response.ok) {
-          const responseData = await response.json();
-          console.log(`[Email Server] Notification email sent successfully to ${toEmail} via Resend:`, responseData);
-          return res.json({ success: true, via: "resend", data: responseData });
-        }
-      } catch (resendErr: any) {
-        console.warn(`[Email Server] Resend API failed:`, resendErr?.message || resendErr);
       }
     }
 
@@ -364,7 +371,10 @@ If you have any questions, contact support at <a href="mailto:fundora.one@gmail.
     }
 
     const resendApiKey = (process.env.RESEND_API_KEY || process.env.VITE_RESEND_API_KEY || "").trim();
-    const resendFromEmail = (process.env.RESEND_FROM_EMAIL || process.env.VITE_RESEND_FROM_EMAIL || "fundora.one@gmail.com").trim();
+    let resendFromEmail = (process.env.RESEND_FROM_EMAIL || process.env.VITE_RESEND_FROM_EMAIL || "no-reply@fundora.one").trim();
+    if (!resendFromEmail || resendFromEmail.toLowerCase().includes("gmail.com") || resendFromEmail.toLowerCase().includes("yahoo.com") || resendFromEmail.toLowerCase().includes("hotmail.com")) {
+      resendFromEmail = "no-reply@fundora.one";
+    }
     const gasProxyUrl = process.env.VITE_SECURE_PROXY_URL || "https://script.google.com/macros/s/AKfycbwHF82vYH4JVV0ANbHvi2TSnbw6O8pp3jIT75EYKOxYhezBKk1DDvAb7Ve4EU14t46S9g/exec";
 
     if (!isValidResendApiKey(resendApiKey)) {
