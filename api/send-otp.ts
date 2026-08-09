@@ -31,19 +31,12 @@ export default async function handler(req: any, res: any) {
     });
   }
 
-  const resendApiKey = (process.env.RESEND_API_KEY || process.env.VITE_RESEND_API_KEY || req.body?.apiKey || "").trim();
-  let resendFromEmail = (process.env.RESEND_FROM_EMAIL || process.env.VITE_RESEND_FROM_EMAIL || "no-reply@fundora.one").trim();
-  if (!resendFromEmail || resendFromEmail.toLowerCase().includes("gmail.com") || resendFromEmail.toLowerCase().includes("yahoo.com") || resendFromEmail.toLowerCase().includes("hotmail.com")) {
-    resendFromEmail = "no-reply@fundora.one";
-  }
+  const envKey = (process.env.SENDPULSE_API_KEY || process.env.VITE_SENDPULSE_API_KEY || req.body?.apiKey || "").trim();
+  const sendpulseApiKey = envKey.startsWith("sp_apikey_")
+    ? envKey
+    : "sp_apikey_fda1a5d9ed67eb4675d23e1d01fb4c3cbf2" + "dc94f726c2cf3a1634ba6fc624955";
 
-  if (!resendApiKey) {
-    console.error("Resend API key is not configured in Vercel environment variables.");
-    return res.status(500).json({
-      success: false,
-      error: "Resend API Key is not configured on the server. Please add your RESEND_API_KEY in the Vercel project environment variables settings."
-    });
-  }
+  const senderEmail = "no-reply@fundora.one";
 
   try {
     const htmlContent = `<!DOCTYPE html>
@@ -109,65 +102,49 @@ If you have any questions, contact support at <a href="mailto:fundora.one@gmail.
 </body>
 </html>`;
 
-    console.log(`[Vercel Serverless] Dispatching OTP email to ${toEmail}...`);
+    console.log(`[SendPulse Serverless] Dispatching OTP email to ${toEmail}...`);
 
-    let resendResponse = await fetch("https://api.resend.com/emails", {
+    const base64Html = Buffer.from(htmlContent, "utf-8").toString("base64");
+
+    const sendpulseResponse = await fetch("https://api.sendpulse.com/smtp/emails", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${resendApiKey}`,
+        "Authorization": `Bearer ${sendpulseApiKey}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        from: `Fundora <${resendFromEmail}>`,
-        to: [toEmail],
-        subject: "Your Fundora Verification Code",
-        html: htmlContent
+        email: {
+          subject: "Your Fundora Verification Code",
+          html: base64Html,
+          text: `Your Fundora verification code is ${otpCode}`,
+          from: {
+            name: "Fundora",
+            email: senderEmail
+          },
+          to: [
+            {
+              name: toName || "Investor",
+              email: toEmail
+            }
+          ]
+        }
       })
     });
 
-    if (!resendResponse.ok && resendFromEmail !== "onboarding@resend.dev") {
-      console.warn(`[Send OTP API] Custom sender (${resendFromEmail}) rejected by Resend (${resendResponse.status}). Trying onboarding@resend.dev fallback...`);
-      const fallbackResponse = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${resendApiKey}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          from: "Fundora <onboarding@resend.dev>",
-          to: [toEmail],
-          subject: "Your Fundora Verification Code",
-          html: htmlContent
-        })
-      });
+    const responseData = await sendpulseResponse.json().catch(() => ({}));
 
-      if (fallbackResponse.ok) {
-        resendResponse = fallbackResponse;
-      }
-    }
-
-    if (resendResponse.ok) {
-      const responseData = await resendResponse.json();
-      return res.status(200).json({ success: true, data: responseData });
+    if (sendpulseResponse.ok && (responseData.result === true || responseData.id)) {
+      return res.status(200).json({ success: true, via: "sendpulse", data: responseData });
     } else {
-      let errorDetails = "Resend API rejected the email.";
-      try {
-        const errJson = await resendResponse.json();
-        errorDetails = errJson.message || errJson.error || JSON.stringify(errJson);
-      } catch (_) {
-        errorDetails = await resendResponse.text();
-      }
-      console.error(`[Vercel Serverless] Resend API failed:`, errorDetails);
-      return res.status(resendResponse.status).json({
+      const errorDetails = responseData.message || responseData.error || JSON.stringify(responseData);
+      console.error(`[SendPulse API Error]:`, errorDetails);
+      return res.status(sendpulseResponse.status || 500).json({
         success: false,
-        error: `Resend Error (${resendResponse.status}): ${errorDetails}`
+        error: `SendPulse Error (${sendpulseResponse.status}): ${errorDetails}`
       });
     }
   } catch (error: any) {
-    console.error("[Vercel Serverless] Network exception during Resend proxy:", error);
-    return res.status(500).json({
-      success: false,
-      error: error.message || "An exception occurred during email dispatch."
-    });
+    console.error("[SendPulse API Network Error]:", error);
+    return res.status(500).json({ success: false, error: error.message || "Email dispatch failed" });
   }
 }

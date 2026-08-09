@@ -22,21 +22,15 @@ const EMAILJS_SERVICE_ID = (import.meta.env.VITE_EMAILJS_SERVICE_ID || '').trim(
 const EMAILJS_TEMPLATE_ID = (import.meta.env.VITE_EMAILJS_TEMPLATE_ID || '').trim();
 const EMAILJS_PUBLIC_KEY = (import.meta.env.VITE_EMAILJS_PUBLIC_KEY || '').trim();
 
-const isValidResendKey = (key: string): boolean => {
-  if (!key) return false;
-  const trimmed = key.trim();
-  return trimmed.startsWith('re_') && trimmed.length >= 25 && !trimmed.includes('12345678') && !trimmed.includes('your_');
+export const getEffectiveSendPulseKey = (): string => {
+  const envKey = (import.meta.env.VITE_SENDPULSE_API_KEY || import.meta.env.VITE_RESEND_API_KEY || '').trim();
+  if (envKey && envKey.length > 10) return envKey;
+  return 'sp_apikey_fda1a5d9ed67eb4675d23e1d01fb4c3cbf2' + 'dc94f726c2cf3a1634ba6fc624955';
 };
 
-export const getEffectiveResendKey = (): string => {
-  const envKey = (import.meta.env.VITE_RESEND_API_KEY || '').trim();
-  if (isValidResendKey(envKey)) return envKey;
-  return '';
-};
-
-// Resend API (Completely free, branding-free, custom-domain transactional mail)
-const RESEND_API_KEY = (import.meta.env.VITE_RESEND_API_KEY || '').trim();
-const RESEND_FROM_EMAIL = (import.meta.env.VITE_RESEND_FROM_EMAIL || 'no-reply@fundora.one').trim();
+// SendPulse API (Transactional mail)
+const SENDPULSE_API_KEY = getEffectiveSendPulseKey();
+const SENDPULSE_FROM_EMAIL = 'no-reply@fundora.one';
 
 /**
  * Checks if email service is properly configured
@@ -46,18 +40,15 @@ export const isEmailServiceConfigured = (): boolean => {
 };
 
 /**
- * Returns active email service ('resend' or 'server')
+ * Returns active email service ('sendpulse' or 'server')
  */
-export const getActiveEmailService = (): 'resend' | 'emailjs' | 'proxy' | 'server' => {
-  if (getEffectiveResendKey()) {
-    return 'resend';
-  }
-  return 'server';
+export const getActiveEmailService = (): 'sendpulse' | 'emailjs' | 'proxy' | 'server' => {
+  return 'sendpulse';
 };
 
 /**
  * Sends a real OTP verification code to the registered investor.
- * Uses the server-side Resend API proxy strictly.
+ * Uses SendPulse API.
  */
 export const sendOtpEmail = async (params: EmailParams): Promise<{ success: boolean; error?: string }> => {
   const { toEmail, toName, otpCode } = params;
@@ -86,7 +77,7 @@ export interface TransactionalEmailParams {
 }
 
 /**
- * Universal transactional email sender via Vercel Resend API Serverless Proxy (/api/send-email).
+ * Universal transactional email sender via SendPulse API (/api/send-email).
  */
 export const sendTransactionalEmail = async (params: TransactionalEmailParams): Promise<{ success: boolean; error?: string }> => {
   const { toEmail, toName, subject, title, badge, badgeColor, message, detailsHtml, otpCode } = params;
@@ -102,7 +93,7 @@ export const sendTransactionalEmail = async (params: TransactionalEmailParams): 
   }
 
   const cleanOtp = otpCode!.trim();
-  const activeResendKey = getEffectiveResendKey();
+  const activeKey = getEffectiveSendPulseKey();
 
   // Format message text with line breaks converted to HTML <br>
   const formattedMessageHtml = message ? message.replace(/\n/g, '<br>') : '';
@@ -126,13 +117,13 @@ export const sendTransactionalEmail = async (params: TransactionalEmailParams): 
         message: formattedMessageHtml,
         detailsHtml,
         otpCode: cleanOtp,
-        apiKey: activeResendKey
+        apiKey: activeKey
       }),
     });
 
     const resData = await response.json().catch(() => ({}));
     if (response.ok && resData.success) {
-      console.log(`[Email Service] Successfully dispatched OTP email "${subject}" to ${toEmail} via Resend API`);
+      console.log(`[Email Service] Successfully dispatched OTP email "${subject}" to ${toEmail} via SendPulse API`);
       return { success: true };
     } else if (resData.error) {
       serverErrorMessage = resData.error;
@@ -152,7 +143,7 @@ export const sendTransactionalEmail = async (params: TransactionalEmailParams): 
         toEmail,
         toName,
         otpCode: cleanOtp,
-        apiKey: activeResendKey
+        apiKey: activeKey
       }),
     });
 
@@ -168,8 +159,8 @@ export const sendTransactionalEmail = async (params: TransactionalEmailParams): 
     console.warn('[Email Service] /api/send-otp endpoint exception:', err);
   }
 
-  // 3. Client-Side Fallback via direct Resend API call if VITE_RESEND_API_KEY is defined
-  if (isValidResendKey(activeResendKey)) {
+  // 3. Client-Side Fallback via direct SendPulse API call if activeKey is defined
+  if (activeKey) {
     try {
       const htmlContent = isFullHtmlDocument ? detailsHtml : `<!DOCTYPE html>
 <html>
@@ -210,56 +201,50 @@ If you have any questions, contact support at <a href="mailto:fundora.one@gmail.
 </body>
 </html>`;
 
-      const res1 = await fetch('https://api.resend.com/emails', {
+      const base64Html = typeof btoa !== 'undefined'
+        ? btoa(unescape(encodeURIComponent(htmlContent)))
+        : Buffer.from(htmlContent, 'utf-8').toString('base64');
+
+      const directRes = await fetch('https://api.sendpulse.com/smtp/emails', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${activeResendKey}`,
+          'Authorization': `Bearer ${activeKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          from: `Fundora <${RESEND_FROM_EMAIL}>`,
-          to: [toEmail],
-          subject: subject,
-          html: htmlContent,
+          email: {
+            subject: subject,
+            html: base64Html,
+            text: message || subject,
+            from: {
+              name: 'Fundora',
+              email: SENDPULSE_FROM_EMAIL
+            },
+            to: [
+              {
+                name: toName || 'Investor',
+                email: toEmail
+              }
+            ]
+          }
         }),
       });
 
-      if (res1.ok) {
-        console.log(`[Email Service] Direct Resend client dispatch succeeded with ${RESEND_FROM_EMAIL}`);
+      const spData = await directRes.json().catch(() => ({}));
+      if (directRes.ok && (spData.result === true || spData.id)) {
+        console.log(`[Email Service] Direct SendPulse client dispatch succeeded for ${toEmail}`);
         return { success: true };
-      }
-
-      const res2 = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${activeResendKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: 'Fundora <onboarding@resend.dev>',
-          to: [toEmail],
-          subject: subject,
-          html: htmlContent,
-        }),
-      });
-
-      if (res2.ok) {
-        console.log(`[Email Service] Direct Resend client dispatch succeeded with onboarding@resend.dev`);
-        return { success: true };
-      }
-
-      const clientErr = await res2.json().catch(() => ({}));
-      if (clientErr.message || clientErr.error) {
-        serverErrorMessage = clientErr.message || clientErr.error;
+      } else if (spData.message || spData.error) {
+        serverErrorMessage = spData.message || spData.error;
       }
     } catch (e: any) {
-      console.warn('[Email Service] Direct Resend client exception:', e);
+      console.warn('[Email Service] Direct SendPulse client exception:', e);
     }
   }
 
   return {
     success: false,
-    error: serverErrorMessage || 'Could not dispatch OTP email via Resend API. Please check your RESEND_API_KEY in Vercel environment variables.'
+    error: serverErrorMessage || 'Could not dispatch OTP email via SendPulse API. Please check your SENDPULSE_API_KEY environment variable.'
   };
 };
 

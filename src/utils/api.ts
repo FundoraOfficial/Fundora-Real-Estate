@@ -68,7 +68,7 @@ export const fetchWithFallback = async (path: string, options: RequestInit = {})
     const isHtmlResponse = contentType.includes("text/html");
 
     // If server responded with non-HTML content (e.g. JSON API response), return it directly!
-    // Even if status is 4xx or 5xx, caller can parse JSON error details (e.g. Resend error messages).
+    // Even if status is 4xx or 5xx, caller can parse JSON error details (e.g. SendPulse error messages).
     if (!isHtmlResponse) {
       return response;
     }

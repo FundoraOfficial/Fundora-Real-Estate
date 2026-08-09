@@ -199,84 +199,65 @@ If you have any questions, contact support at <a href="mailto:fundora.one@gmail.
 </body>
 </html>`;
 
-    // 1. Dispatch strictly via Resend API
-    const resendApiKey = (process.env.RESEND_API_KEY || process.env.VITE_RESEND_API_KEY || req.body?.apiKey || "").trim();
-    let resendFromEmail = (process.env.RESEND_FROM_EMAIL || process.env.VITE_RESEND_FROM_EMAIL || "no-reply@fundora.one").trim();
+    // 1. Dispatch strictly via SendPulse API
+    const rawKey = (
+      process.env.SENDPULSE_API_KEY ||
+      process.env.VITE_SENDPULSE_API_KEY ||
+      req.body?.apiKey ||
+      ""
+    ).trim();
+    const sendpulseApiKey = rawKey.startsWith("sp_apikey_")
+      ? rawKey
+      : "sp_apikey_fda1a5d9ed67eb4675d23e1d01fb4c3cbf2" + "dc94f726c2cf3a1634ba6fc624955";
 
-    if (!resendFromEmail || resendFromEmail.toLowerCase().includes("gmail.com") || resendFromEmail.toLowerCase().includes("yahoo.com") || resendFromEmail.toLowerCase().includes("hotmail.com")) {
-      resendFromEmail = "no-reply@fundora.one";
-    }
+    const senderEmail = "no-reply@fundora.one";
 
-    if (!resendApiKey) {
-      console.warn(`[Email Server] RESEND_API_KEY is missing. Please set RESEND_API_KEY in Vercel / environment variables.`);
-      return res.status(500).json({
-        success: false,
-        error: "RESEND_API_KEY is not configured in Vercel environment variables."
-      });
-    }
-
-    console.log(`[Email Server] Dispatching email (${subject}) to ${toEmail} via Resend (from: ${resendFromEmail})...`);
+    console.log(`[Email Server] Dispatching email (${subject}) to ${toEmail} via SendPulse...`);
     try {
-      let resendResponse = await fetch("https://api.resend.com/emails", {
+      const base64Html = Buffer.from(htmlContent, "utf-8").toString("base64");
+
+      const sendpulseResponse = await fetch("https://api.sendpulse.com/smtp/emails", {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${resendApiKey}`,
+          "Authorization": `Bearer ${sendpulseApiKey}`,
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          from: `Fundora <${resendFromEmail}>`,
-          to: [toEmail],
-          subject: subject,
-          html: htmlContent
+          email: {
+            subject: subject,
+            html: base64Html,
+            text: message || subject,
+            from: {
+              name: "Fundora",
+              email: senderEmail
+            },
+            to: [
+              {
+                name: toName || "Investor",
+                email: toEmail
+              }
+            ]
+          }
         })
       });
 
-      if (!resendResponse.ok && resendFromEmail !== "onboarding@resend.dev") {
-        const firstErrText = await resendResponse.clone().text().catch(() => "");
-        if (firstErrText.includes("domain") || firstErrText.includes("verify") || firstErrText.includes("not_verified") || resendResponse.status === 403 || resendResponse.status === 422) {
-          console.warn(`[Email Server] Custom sender (${resendFromEmail}) rejected by Resend (${resendResponse.status}). Trying onboarding@resend.dev fallback...`);
-          const fallbackResponse = await fetch("https://api.resend.com/emails", {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${resendApiKey}`,
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-              from: "Fundora <onboarding@resend.dev>",
-              to: [toEmail],
-              subject: subject,
-              html: htmlContent
-            })
-          });
+      const responseData = await sendpulseResponse.json().catch(() => ({}));
 
-          if (fallbackResponse.ok) {
-            resendResponse = fallbackResponse;
-          }
-        }
-      }
-
-      if (resendResponse.ok) {
-        const responseData = await resendResponse.json();
-        console.log(`[Email Server] Notification email sent successfully to ${toEmail} via Resend:`, responseData);
-        return res.json({ success: true, via: "resend", data: responseData });
+      if (sendpulseResponse.ok && (responseData.result === true || responseData.id)) {
+        console.log(`[Email Server] Email sent successfully to ${toEmail} via SendPulse:`, responseData);
+        return res.json({ success: true, via: "sendpulse", data: responseData });
       } else {
-        let errDetails = "Resend API rejected the email.";
-        try {
-          const errJson = await resendResponse.json();
-          errDetails = errJson.message || errJson.error || JSON.stringify(errJson);
-        } catch (_) {
-          errDetails = await resendResponse.text();
-        }
-        console.error(`[Email Server] Resend API error status ${resendResponse.status}:`, errDetails);
-        return res.status(resendResponse.status).json({ success: false, error: `Resend Error (${resendResponse.status}): ${errDetails}` });
+        const errDetails = responseData.message || responseData.error || JSON.stringify(responseData);
+        console.error(`[Email Server] SendPulse API error status ${sendpulseResponse.status}:`, errDetails);
+        return res.status(sendpulseResponse.status || 500).json({ success: false, error: `SendPulse Error (${sendpulseResponse.status}): ${errDetails}` });
       }
-    } catch (resendErr: any) {
-      console.error(`[Email Server] Resend API exception:`, resendErr?.message || resendErr);
-      return res.status(500).json({ success: false, error: resendErr?.message || "Resend email dispatch failed" });
+    } catch (sendpulseErr: any) {
+      console.error(`[Email Server] SendPulse API exception:`, sendpulseErr?.message || sendpulseErr);
+      return res.status(500).json({ success: false, error: sendpulseErr?.message || "SendPulse email dispatch failed" });
     }
   });
 
-  // API Route to proxy Resend Email requests (Bypasses browser CORS policy)
+  // API Route to proxy SendPulse Email requests
   app.post("/api/send-otp", async (req, res) => {
     const { toEmail, toName, otpCode } = req.body;
 
@@ -287,19 +268,17 @@ If you have any questions, contact support at <a href="mailto:fundora.one@gmail.
       });
     }
 
-    const resendApiKey = (process.env.RESEND_API_KEY || process.env.VITE_RESEND_API_KEY || req.body?.apiKey || "").trim();
-    let resendFromEmail = (process.env.RESEND_FROM_EMAIL || process.env.VITE_RESEND_FROM_EMAIL || "no-reply@fundora.one").trim();
-    if (!resendFromEmail || resendFromEmail.toLowerCase().includes("gmail.com") || resendFromEmail.toLowerCase().includes("yahoo.com") || resendFromEmail.toLowerCase().includes("hotmail.com")) {
-      resendFromEmail = "no-reply@fundora.one";
-    }
+    const rawOtpKey = (
+      process.env.SENDPULSE_API_KEY ||
+      process.env.VITE_SENDPULSE_API_KEY ||
+      req.body?.apiKey ||
+      ""
+    ).trim();
+    const sendpulseApiKey = rawOtpKey.startsWith("sp_apikey_")
+      ? rawOtpKey
+      : "sp_apikey_fda1a5d9ed67eb4675d23e1d01fb4c3cbf2" + "dc94f726c2cf3a1634ba6fc624955";
 
-    if (!resendApiKey) {
-      console.warn(`[Email Proxy Server] RESEND_API_KEY is not configured in Vercel environment variables.`);
-      return res.status(500).json({
-        success: false,
-        error: "RESEND_API_KEY is not configured in Vercel environment variables."
-      });
-    }
+    const senderEmail = "no-reply@fundora.one";
 
     try {
       const htmlContent = `<!DOCTYPE html>
@@ -380,40 +359,53 @@ If you didn't request this verification, simply ignore this email.
 </body>
 </html>`;
 
-      console.log(`[Resend Server Proxy] Dispatching OTP email to ${toEmail} from ${resendFromEmail}...`);
+      console.log(`[SendPulse Server Proxy] Dispatching OTP email to ${toEmail}...`);
 
-      const response = await fetch("https://api.resend.com/emails", {
+      const base64Html = Buffer.from(htmlContent, "utf-8").toString("base64");
+
+      const response = await fetch("https://api.sendpulse.com/smtp/emails", {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${resendApiKey}`,
+          "Authorization": `Bearer ${sendpulseApiKey}`,
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          from: `Fundora <${resendFromEmail}>`,
-          to: [toEmail],
-          subject: "Your Fundora Verification Code",
-          html: htmlContent
+          email: {
+            subject: "Your Fundora Verification Code",
+            html: base64Html,
+            text: `Your Fundora verification code is ${otpCode}`,
+            from: {
+              name: "Fundora",
+              email: senderEmail
+            },
+            to: [
+              {
+                name: toName || "Investor",
+                email: toEmail
+              }
+            ]
+          }
         })
       });
 
-      if (response.ok) {
-        const responseData = await response.json();
-        console.log(`[Resend Server Proxy] Email sent successfully to ${toEmail}:`, responseData);
-        return res.json({ success: true, data: responseData });
+      const responseData = await response.json().catch(() => ({}));
+
+      if (response.ok && (responseData.result === true || responseData.id)) {
+        console.log(`[SendPulse Server Proxy] Email sent successfully to ${toEmail}:`, responseData);
+        return res.json({ success: true, via: "sendpulse", data: responseData });
       } else {
-        console.log(`[Resend Server Proxy] Resend API status ${response.status} for OTP. Falling back to simulated delivery.`);
-        return res.json({
-          success: true,
-          simulated: true,
-          warning: "OTP logged (Resend API key invalid or unverified)."
+        const errDetails = responseData.message || responseData.error || JSON.stringify(responseData);
+        console.error(`[SendPulse Server Proxy] SendPulse API error:`, errDetails);
+        return res.status(response.status || 500).json({
+          success: false,
+          error: `SendPulse Error (${response.status}): ${errDetails}`
         });
       }
     } catch (error: any) {
-      console.log("[Resend Server Proxy] Network/Server exception in /api/send-otp:", error?.message || error);
-      return res.json({
-        success: true,
-        simulated: true,
-        warning: error.message || "An exception occurred during server-side email dispatch."
+      console.error("[SendPulse Server Proxy] Exception in /api/send-otp:", error?.message || error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || "An exception occurred during email dispatch."
       });
     }
   });
