@@ -125,11 +125,17 @@ If you didn't request this verification, simply ignore this email.
       const responseData = await response.json();
       return res.status(200).json({ success: true, data: responseData });
     } else {
-      const errorText = await response.text();
-      console.error(`[Vercel Serverless] Resend API failed:`, errorText);
+      let errorDetails = "Resend API rejected the email.";
+      try {
+        const errJson = await response.json();
+        errorDetails = errJson.message || errJson.error || JSON.stringify(errJson);
+      } catch (_) {
+        errorDetails = await response.text();
+      }
+      console.error(`[Vercel Serverless] Resend API failed:`, errorDetails);
       return res.status(response.status).json({
         success: false,
-        error: errorText || "Resend API failed to accept the email."
+        error: `Resend API Error (${response.status}): ${errorDetails}`
       });
     }
   } catch (error: any) {

@@ -106,8 +106,14 @@ ${cleanOtp ? `<div style="margin:24px 0;text-align:center;"><div style="display:
       const responseData = await response.json();
       return res.status(200).json({ success: true, via: "resend", data: responseData });
     } else {
-      const errorText = await response.text();
-      return res.status(response.status).json({ success: false, error: errorText });
+      let errorDetails = "Resend API rejected the email.";
+      try {
+        const errJson = await response.json();
+        errorDetails = errJson.message || errJson.error || JSON.stringify(errJson);
+      } catch (_) {
+        errorDetails = await response.text();
+      }
+      return res.status(response.status).json({ success: false, error: `Resend API Error (${response.status}): ${errorDetails}` });
     }
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message || "Email dispatch failed" });

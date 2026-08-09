@@ -1538,7 +1538,7 @@ export default function AuthPages({ initialScreen = 'login', onAuthSuccess, onNa
                     <p className="font-extrabold uppercase tracking-wide text-[9px] text-red-400">⚠️ Email Delivery Failed</p>
                     <p className="text-slate-300 font-mono mt-1 text-[10px] break-all">{emailSendError}</p>
                     <p className="text-slate-400 mt-1.5 text-[10px]">
-                      Please check your EmailJS configuration or Proxy Webhook settings in repository environment settings.
+                      Please check your RESEND_API_KEY in Vercel environment variables settings.
                     </p>
                   </div>
                 )}
@@ -1677,7 +1677,7 @@ export default function AuthPages({ initialScreen = 'login', onAuthSuccess, onNa
                     <p className="font-extrabold uppercase tracking-wide text-[9px] text-red-400">⚠️ Email Delivery Failed</p>
                     <p className="text-slate-300 font-mono mt-1 text-[10px] break-all">{emailSendError}</p>
                     <p className="text-slate-400 mt-1.5 text-[10px]">
-                      Please check your EmailJS configuration or Proxy Webhook settings in repository environment settings.
+                      Please check your RESEND_API_KEY in Vercel environment variables settings.
                     </p>
                   </div>
                 )}
