@@ -92,9 +92,13 @@ This code will expire in <strong>10 minutes</strong>.
 <p style="font-size:15px;color:#777;">
 If you didn't request this verification, simply ignore this email.
 </p>
-<hr>
-<p style="font-size:13px;color:#999;text-align:center;">
-© 2026 Fundora. All rights reserved.
+<hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;">
+<p style="font-size:12px;color:#6b7280;text-align:center;line-height:18px;">
+This is an automated notification from <strong>Fundora.one</strong>.<br>
+If you have any questions, contact support at <a href="mailto:fundora.one@gmail.com" style="color:#0d6efd;text-decoration:none;">fundora.one@gmail.com</a>
+</p>
+<p style="font-size:12px;color:#9ca3af;text-align:center;">
+© 2026 Fundora.one. All rights reserved.
 </p>
 </td>
 </tr>
@@ -107,7 +111,7 @@ If you didn't request this verification, simply ignore this email.
 
     console.log(`[Vercel Serverless] Dispatching OTP email to ${toEmail}...`);
 
-    const response = await fetch("https://api.resend.com/emails", {
+    let resendResponse = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${resendApiKey}`,
@@ -121,21 +125,45 @@ If you didn't request this verification, simply ignore this email.
       })
     });
 
-    if (response.ok) {
-      const responseData = await response.json();
+    if (!resendResponse.ok && resendFromEmail !== "onboarding@resend.dev") {
+      const firstErrText = await resendResponse.clone().text().catch(() => "");
+      if (firstErrText.includes("domain") || firstErrText.includes("verify") || firstErrText.includes("not_verified") || resendResponse.status === 403 || resendResponse.status === 422) {
+        console.warn(`[Send OTP API] Custom sender (${resendFromEmail}) rejected by Resend (${resendResponse.status}). Trying onboarding@resend.dev fallback...`);
+        const fallbackResponse = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${resendApiKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            from: "Fundora <onboarding@resend.dev>",
+            to: [toEmail],
+            subject: "Your Fundora Verification Code",
+            html: htmlContent
+          })
+        });
+
+        if (fallbackResponse.ok) {
+          resendResponse = fallbackResponse;
+        }
+      }
+    }
+
+    if (resendResponse.ok) {
+      const responseData = await resendResponse.json();
       return res.status(200).json({ success: true, data: responseData });
     } else {
       let errorDetails = "Resend API rejected the email.";
       try {
-        const errJson = await response.json();
+        const errJson = await resendResponse.json();
         errorDetails = errJson.message || errJson.error || JSON.stringify(errJson);
       } catch (_) {
-        errorDetails = await response.text();
+        errorDetails = await resendResponse.text();
       }
       console.error(`[Vercel Serverless] Resend API failed:`, errorDetails);
-      return res.status(response.status).json({
+      return res.status(resendResponse.status).json({
         success: false,
-        error: `Resend API Error (${response.status}): ${errorDetails}`
+        error: `Resend Error (${resendResponse.status}): ${errorDetails}`
       });
     }
   } catch (error: any) {

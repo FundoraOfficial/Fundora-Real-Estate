@@ -188,7 +188,7 @@ ${isRealOtp ? `<div style="margin:24px 0;text-align:center;"><div style="display
 <hr style="border:none;border-top:1px solid #1e293b;margin:24px 0;">
 <p style="font-size:12px;color:#64748b;text-align:center;line-height:18px;">
 This is an automated notification from <strong>Fundora.one</strong>.<br>
-If you have any questions, contact support at <a href="mailto:support@fundora.one" style="color:#38bdf8;text-decoration:none;">support@fundora.one</a>
+If you have any questions, contact support at <a href="mailto:fundora.one@gmail.com" style="color:#38bdf8;text-decoration:none;">fundora.one@gmail.com</a>
 </p>
 </td>
 </tr>
@@ -217,7 +217,7 @@ If you have any questions, contact support at <a href="mailto:support@fundora.on
 
     console.log(`[Email Server] Dispatching email (${subject}) to ${toEmail} via Resend (from: ${resendFromEmail})...`);
     try {
-      const response = await fetch("https://api.resend.com/emails", {
+      let resendResponse = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${resendApiKey}`,
@@ -231,14 +231,44 @@ If you have any questions, contact support at <a href="mailto:support@fundora.on
         })
       });
 
-      if (response.ok) {
-        const responseData = await response.json();
+      if (!resendResponse.ok && resendFromEmail !== "onboarding@resend.dev") {
+        const firstErrText = await resendResponse.clone().text().catch(() => "");
+        if (firstErrText.includes("domain") || firstErrText.includes("verify") || firstErrText.includes("not_verified") || resendResponse.status === 403 || resendResponse.status === 422) {
+          console.warn(`[Email Server] Custom sender (${resendFromEmail}) rejected by Resend (${resendResponse.status}). Trying onboarding@resend.dev fallback...`);
+          const fallbackResponse = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${resendApiKey}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              from: "Fundora <onboarding@resend.dev>",
+              to: [toEmail],
+              subject: subject,
+              html: htmlContent
+            })
+          });
+
+          if (fallbackResponse.ok) {
+            resendResponse = fallbackResponse;
+          }
+        }
+      }
+
+      if (resendResponse.ok) {
+        const responseData = await resendResponse.json();
         console.log(`[Email Server] Notification email sent successfully to ${toEmail} via Resend:`, responseData);
         return res.json({ success: true, via: "resend", data: responseData });
       } else {
-        const errText = await response.text();
-        console.error(`[Email Server] Resend API error status ${response.status}:`, errText);
-        return res.status(response.status).json({ success: false, error: errText });
+        let errDetails = "Resend API rejected the email.";
+        try {
+          const errJson = await resendResponse.json();
+          errDetails = errJson.message || errJson.error || JSON.stringify(errJson);
+        } catch (_) {
+          errDetails = await resendResponse.text();
+        }
+        console.error(`[Email Server] Resend API error status ${resendResponse.status}:`, errDetails);
+        return res.status(resendResponse.status).json({ success: false, error: `Resend Error (${resendResponse.status}): ${errDetails}` });
       }
     } catch (resendErr: any) {
       console.error(`[Email Server] Resend API exception:`, resendErr?.message || resendErr);
@@ -561,7 +591,7 @@ You assist investors worldwide with verified platform knowledge in multiple lang
 FUNDORA PLATFORM FACTS & OFFICIAL DOCUMENTATION:
 - Official Registered Entity: Fundora Real Estate Investment Platform Ltd (UK Companies House Registration No. 16870956).
 - Official Website: https://fundora.one
-- Official Support Email: support@fundora.one
+- Official Support Email: fundora.one@gmail.com
 - Official Mobile App: YES! Fundora provides an official downloadable Android Mobile App (Fundora APK) available directly on our website! Users can click the "Download App" / "Android APK" button in the top navigation bar or menu.
 
 KEY FEATURES & RECENT UPDATES:

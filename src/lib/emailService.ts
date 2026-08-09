@@ -104,6 +104,8 @@ export const sendTransactionalEmail = async (params: TransactionalEmailParams): 
   const isFullHtmlDocument = detailsHtml && (detailsHtml.includes('<!DOCTYPE') || detailsHtml.includes('<html'));
 
   // 1. Primary Choice: Express / Vercel Serverless API (/api/send-email) - Dispatches strictly via Resend API
+  let serverErrorMessage = '';
+
   try {
     const response = await fetchWithFallback('/api/send-email', {
       method: 'POST',
@@ -121,17 +123,41 @@ export const sendTransactionalEmail = async (params: TransactionalEmailParams): 
       }),
     });
 
-    if (response.ok) {
-      const resData = await response.json().catch(() => ({}));
-      if (resData.success) {
-        console.log(`[Email Service] Successfully dispatched OTP email "${subject}" to ${toEmail} via Resend API`);
-        return { success: true };
-      } else if (resData.error) {
-        console.warn(`[Email Service] /api/send-email error: ${resData.error}`);
-      }
+    const resData = await response.json().catch(() => ({}));
+    if (response.ok && resData.success) {
+      console.log(`[Email Service] Successfully dispatched OTP email "${subject}" to ${toEmail} via Resend API`);
+      return { success: true };
+    } else if (resData.error) {
+      serverErrorMessage = resData.error;
+      console.warn(`[Email Service] /api/send-email error: ${resData.error}`);
     }
-  } catch (err) {
-    console.warn('[Email Service] /api/send-email endpoint error:', err);
+  } catch (err: any) {
+    console.warn('[Email Service] /api/send-email endpoint exception:', err);
+    serverErrorMessage = err?.message || 'Network request failed';
+  }
+
+  // 1b. Fallback Serverless Endpoint: /api/send-otp
+  try {
+    const responseOtp = await fetchWithFallback('/api/send-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        toEmail,
+        toName,
+        otpCode: cleanOtp
+      }),
+    });
+
+    const resOtpData = await responseOtp.json().catch(() => ({}));
+    if (responseOtp.ok && resOtpData.success) {
+      console.log(`[Email Service] Successfully dispatched OTP email to ${toEmail} via /api/send-otp`);
+      return { success: true };
+    } else if (resOtpData.error) {
+      serverErrorMessage = resOtpData.error;
+      console.warn(`[Email Service] /api/send-otp error: ${resOtpData.error}`);
+    }
+  } catch (err: any) {
+    console.warn('[Email Service] /api/send-otp endpoint exception:', err);
   }
 
   // 2. Secondary Choice: Direct Client-Side Resend API call if VITE_RESEND_API_KEY is configured
@@ -163,6 +189,10 @@ ${formattedMessageHtml}
 ${detailsHtml ? `<div style="margin-bottom:20px;">${detailsHtml}</div>` : ''}
 ${cleanOtp ? `<div style="margin:24px 0;text-align:center;"><div style="display:inline-block;background:#38bdf8;color:#0f172a;padding:16px 32px;font-size:32px;font-weight:bold;letter-spacing:6px;border-radius:10px;">${cleanOtp}</div></div>` : ''}
 <hr style="border:none;border-top:1px solid #1e293b;margin:24px 0;">
+<p style="font-size:12px;color:#64748b;text-align:center;line-height:18px;">
+This is an automated notification from <strong>Fundora.one</strong>.<br>
+If you have any questions, contact support at <a href="mailto:fundora.one@gmail.com" style="color:#38bdf8;text-decoration:none;">fundora.one@gmail.com</a>
+</p>
 <p style="font-size:12px;color:#64748b;text-align:center;">© 2026 Fundora.one. All rights reserved.</p>
 </td>
 </tr>
@@ -187,12 +217,19 @@ ${cleanOtp ? `<div style="margin:24px 0;text-align:center;"><div style="display:
       });
 
       if (res.ok) return { success: true };
-    } catch (e) {
+      const clientErr = await res.json().catch(() => ({}));
+      if (clientErr.message || clientErr.error) {
+        serverErrorMessage = clientErr.message || clientErr.error;
+      }
+    } catch (e: any) {
       console.warn('[Email Service] Direct Resend client exception:', e);
     }
   }
 
-  return { success: false, error: 'Could not dispatch OTP email via Resend API.' };
+  return {
+    success: false,
+    error: serverErrorMessage || 'Could not dispatch OTP email via Resend API. Please check your RESEND_API_KEY in environment variables.'
+  };
 };
 
 /**

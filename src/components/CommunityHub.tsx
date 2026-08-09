@@ -157,7 +157,7 @@ const MOCK_TRUSTEES = [
   {
     id: 'admin-1',
     name: 'Fundora Support Team',
-    email: 'support@fundora.one',
+    email: 'fundora.one@gmail.com',
     role: 'Admin',
     avatar: '🛟',
     status: 'Online',
@@ -814,7 +814,7 @@ const isMessageInDmChannel = (m: CommunityMessage, targetChanId: string, current
       } else if (adminPersona === 'support' || activeChannelId.includes('admin-1')) {
         senderId = 'admin-1';
         senderName = 'Fundora Support Team';
-        senderEmail = 'support@fundora.one';
+        senderEmail = 'fundora.one@gmail.com';
         senderAvatar = '🛟';
       }
     }
@@ -1035,7 +1035,7 @@ const isMessageInDmChannel = (m: CommunityMessage, targetChanId: string, current
       } else if (adminPersona === 'support' || activeChannelId.includes('admin-1')) {
         senderId = 'admin-1';
         senderName = 'Fundora Support Team';
-        senderEmail = 'support@fundora.one';
+        senderEmail = 'fundora.one@gmail.com';
         senderAvatar = '🛟';
         senderRole = 'Admin';
       } else if (adminPersona === 'ai-bot' || activeChannelId.includes('ai-assistant')) {

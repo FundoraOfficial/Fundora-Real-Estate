@@ -182,6 +182,10 @@ export default function App() {
     if (!saved) return null;
     try {
       const parsed = JSON.parse(saved);
+      if (parsed && parsed.isEmailVerified === false && parsed.role !== 'admin') {
+        localStorage.removeItem('inv_active_user');
+        return null;
+      }
       if (parsed && parsed.id === 'user-admin') {
         return { ...parsed, email: 'admin@fundora.one' };
       }
@@ -673,23 +677,35 @@ export default function App() {
               } else {
                 const freshUser = users ? users.find(u => u.id === parsed.id || u.email.toLowerCase().trim() === cleanE) : null;
                 if (freshUser) {
-                  setActiveUser(freshUser);
-                  const isLocalActive = localStorage.getItem(`inv_device_biometric_active_${freshUser.email.toLowerCase().trim()}`) === 'true';
-                  if (freshUser.webAuthnEnabled && isAppLockedRef.current && isLocalActive) {
-                    setIsAppLocked(true);
+                  if (freshUser.isEmailVerified === false && freshUser.role !== 'admin') {
+                    setActiveUser(null);
+                    localStorage.removeItem('inv_active_user');
+                    safeSetLocalStorage('inv_active_user', '');
                   } else {
-                    setIsAppLocked(false);
+                    setActiveUser(freshUser);
+                    const isLocalActive = localStorage.getItem(`inv_device_biometric_active_${freshUser.email.toLowerCase().trim()}`) === 'true';
+                    if (freshUser.webAuthnEnabled && isAppLockedRef.current && isLocalActive) {
+                      setIsAppLocked(true);
+                    } else {
+                      setIsAppLocked(false);
+                    }
                   }
                 } else {
-                  console.log(`[Sync] Local activeUser ${parsed.email} not in Firestore DB yet. Auto-persisting to Firestore...`);
-                  setActiveUser(parsed);
-                  setIsAppLocked(false);
-                  saveAndSyncUser(parsed);
-                  setUsersListState(prev => {
-                    const exists = prev.some(u => u.email.trim().toLowerCase() === cleanE);
-                    if (exists) return prev;
-                    return [...prev, parsed];
-                  });
+                  if (parsed.isEmailVerified === false && parsed.role !== 'admin') {
+                    setActiveUser(null);
+                    localStorage.removeItem('inv_active_user');
+                    safeSetLocalStorage('inv_active_user', '');
+                  } else {
+                    console.log(`[Sync] Local activeUser ${parsed.email} not in Firestore DB yet. Auto-persisting to Firestore...`);
+                    setActiveUser(parsed);
+                    setIsAppLocked(false);
+                    saveAndSyncUser(parsed);
+                    setUsersListState(prev => {
+                      const exists = prev.some(u => u.email.trim().toLowerCase() === cleanE);
+                      if (exists) return prev;
+                      return [...prev, parsed];
+                    });
+                  }
                 }
               }
             }
@@ -764,7 +780,7 @@ export default function App() {
           const currentId = activeUserRef.current.id;
           const freshActive = cleanUsers.find(u => u.id === currentId || (u.email && u.email.toLowerCase().trim() === currentE));
           if (freshActive) {
-            if (freshActive.isDeactivated && freshActive.role !== 'admin') {
+            if ((freshActive.isDeactivated || freshActive.isEmailVerified === false) && freshActive.role !== 'admin') {
               setActiveUser(null);
               localStorage.removeItem('inv_active_user');
             } else {
@@ -1190,6 +1206,10 @@ export default function App() {
 
   // Successful Session Login/Register
   const handleAuthSuccess = (userAccount: UserAccount, isNewReg?: boolean) => {
+    if (userAccount.isEmailVerified === false && userAccount.role !== 'admin') {
+      console.warn("[App] handleAuthSuccess blocked for unverified account:", userAccount.email);
+      return;
+    }
     setActiveUser(userAccount);
     setIsAppLocked(false);
 

@@ -78,6 +78,10 @@ ${formattedMessage}
 ${detailsHtml ? `<div style="margin-bottom:20px;">${detailsHtml}</div>` : ''}
 ${cleanOtp ? `<div style="margin:24px 0;text-align:center;"><div style="display:inline-block;background:#38bdf8;color:#0f172a;padding:16px 32px;font-size:32px;font-weight:bold;letter-spacing:6px;border-radius:10px;">${cleanOtp}</div></div>` : ''}
 <hr style="border:none;border-top:1px solid #1e293b;margin:24px 0;">
+<p style="font-size:12px;color:#64748b;text-align:center;line-height:18px;">
+This is an automated notification from <strong>Fundora.one</strong>.<br>
+If you have any questions, contact support at <a href="mailto:fundora.one@gmail.com" style="color:#38bdf8;text-decoration:none;">fundora.one@gmail.com</a>
+</p>
 <p style="font-size:12px;color:#64748b;text-align:center;">© 2026 Fundora.one. All rights reserved.</p>
 </td>
 </tr>
@@ -88,7 +92,8 @@ ${cleanOtp ? `<div style="margin:24px 0;text-align:center;"><div style="display:
 </html>`;
 
   try {
-    const response = await fetch("https://api.resend.com/emails", {
+    // Attempt 1: Send from custom domain (e.g. no-reply@fundora.one)
+    let resendResponse = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${resendApiKey}`,
@@ -102,18 +107,43 @@ ${cleanOtp ? `<div style="margin:24px 0;text-align:center;"><div style="display:
       })
     });
 
-    if (response.ok) {
-      const responseData = await response.json();
+    // If Attempt 1 failed with domain error and sender isn't onboarding@resend.dev, attempt Fallback Attempt 2
+    if (!resendResponse.ok && resendFromEmail !== "onboarding@resend.dev") {
+      const firstErrText = await resendResponse.clone().text().catch(() => "");
+      if (firstErrText.includes("domain") || firstErrText.includes("verify") || firstErrText.includes("not_verified") || resendResponse.status === 403 || resendResponse.status === 422) {
+        console.warn(`[Send Email API] Custom sender (${resendFromEmail}) rejected by Resend (${resendResponse.status}). Trying onboarding@resend.dev fallback...`);
+        const fallbackResponse = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${resendApiKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            from: "Fundora <onboarding@resend.dev>",
+            to: [toEmail],
+            subject: subject,
+            html: htmlContent
+          })
+        });
+
+        if (fallbackResponse.ok) {
+          resendResponse = fallbackResponse;
+        }
+      }
+    }
+
+    if (resendResponse.ok) {
+      const responseData = await resendResponse.json();
       return res.status(200).json({ success: true, via: "resend", data: responseData });
     } else {
       let errorDetails = "Resend API rejected the email.";
       try {
-        const errJson = await response.json();
+        const errJson = await resendResponse.json();
         errorDetails = errJson.message || errJson.error || JSON.stringify(errJson);
       } catch (_) {
-        errorDetails = await response.text();
+        errorDetails = await resendResponse.text();
       }
-      return res.status(response.status).json({ success: false, error: `Resend API Error (${response.status}): ${errorDetails}` });
+      return res.status(resendResponse.status).json({ success: false, error: `Resend Error (${resendResponse.status}): ${errorDetails}` });
     }
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message || "Email dispatch failed" });

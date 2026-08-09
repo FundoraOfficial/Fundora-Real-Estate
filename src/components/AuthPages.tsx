@@ -157,6 +157,12 @@ export default function AuthPages({ initialScreen = 'login', onAuthSuccess, onNa
       addSystemLog('Login_Failure', `Biometric login blocked for deactivated user ${cleanEmail}`, 'Alarm');
       return;
     }
+    if (matched.role !== 'admin' && matched.isEmailVerified === false) {
+      setErrorMsg('Apka account verified nahi hai. Sign in karne ke liye pehle OTP verify karein.');
+      setBiometricLoginStep('error');
+      addSystemLog('Login_Failure', `Biometric login blocked for unverified user ${cleanEmail}`, 'Alarm');
+      return;
+    }
     if (biometricActionType === 'enable') {
       localStorage.setItem(`inv_device_biometric_active_${cleanEmail}`, 'true');
       try {
@@ -589,6 +595,39 @@ export default function AuthPages({ initialScreen = 'login', onAuthSuccess, onNa
         addSystemLog('Login_Failure', `Failed authorization attempt for ${cleanEmail} (incorrect password)`, 'Alarm');
         return;
       }
+
+      // STRICT OTP RESTRICTION: Block login if account is not yet OTP-verified!
+      if (matchedUser.role !== 'admin' && matchedUser.isEmailVerified === false) {
+        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        setGeneratedOtp(code);
+        setMockVerificationSentTo(cleanEmail);
+        setPendingUserId(matchedUser.id);
+        setIsSendingOtp(true);
+        setErrorMsg('');
+        setSuccessMsg(`Aapka account abhi tak OTP verified nahi hai. Aik naya 6-digit verification code aap ke email (${cleanEmail}) par bhej diya gaya hai. Sign in karne ke liye pehle OTP enter karein.`);
+
+        try {
+          const res = await sendOtpEmail({
+            toEmail: cleanEmail,
+            toName: matchedUser.name || 'Investor',
+            otpCode: code
+          });
+          setIsSendingOtp(false);
+          if (!res.success) {
+            setEmailSendError(res.error || "Failed to deliver OTP via real email.");
+            setShowMockFallback(true);
+          }
+        } catch (err: any) {
+          setIsSendingOtp(false);
+          setEmailSendError(err.message || "Failed to contact proxy email service.");
+          setShowMockFallback(true);
+        }
+
+        setScreen('verify');
+        addSystemLog('Login_Blocked', `Sign-in blocked for unverified account ${cleanEmail}. Fresh OTP ${code} dispatched.`, 'Alarm');
+        return;
+      }
+
       addSystemLog('Login_Success', `Successful login verified for ${matchedUser.email}`, 'Secure');
       saveUserToFirebase({ ...matchedUser });
       onAuthSuccess({ ...matchedUser });
@@ -678,9 +717,9 @@ export default function AuthPages({ initialScreen = 'login', onAuthSuccess, onNa
     }
 
     if (existingUser) {
-      const isAlreadyRegistered = existingUser.isEmailVerified !== false || Boolean(existingUser.password && existingUser.password.trim().length > 0);
+      const isAlreadyRegistered = existingUser.isEmailVerified === true || (existingUser.isEmailVerified !== false && existingUser.role === 'admin');
       if (isAlreadyRegistered) {
-        setErrorMsg('This email address is already bound to another registered investor. Please log in.');
+        setErrorMsg('This email address is already registered and verified. Please log in.');
         return;
       } else {
         // This is a pending/unverified user. Let's send a new OTP and let them complete signup
