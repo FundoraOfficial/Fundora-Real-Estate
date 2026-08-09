@@ -28,6 +28,20 @@ const isValidResendKey = (key: string): boolean => {
   return trimmed.startsWith('re_') && trimmed.length >= 25 && !trimmed.includes('12345678') && !trimmed.includes('your_');
 };
 
+export const getEffectiveResendKey = (): string => {
+  const envKey = (import.meta.env.VITE_RESEND_API_KEY || '').trim();
+  if (isValidResendKey(envKey)) return envKey;
+  
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const localKey = (localStorage.getItem('inv_resend_api_key') || localStorage.getItem('inv_admin_resend_api_key') || '').trim();
+      if (isValidResendKey(localKey)) return localKey;
+    }
+  } catch (_) {}
+
+  return '';
+};
+
 // Resend API (Completely free, branding-free, custom-domain transactional mail)
 const RESEND_API_KEY = (import.meta.env.VITE_RESEND_API_KEY || '').trim();
 const RESEND_FROM_EMAIL = (import.meta.env.VITE_RESEND_FROM_EMAIL || 'no-reply@fundora.one').trim();
@@ -43,7 +57,7 @@ export const isEmailServiceConfigured = (): boolean => {
  * Returns active email service ('resend' or 'server')
  */
 export const getActiveEmailService = (): 'resend' | 'emailjs' | 'proxy' | 'server' => {
-  if (RESEND_API_KEY) {
+  if (getEffectiveResendKey()) {
     return 'resend';
   }
   return 'server';
@@ -97,6 +111,7 @@ export const sendTransactionalEmail = async (params: TransactionalEmailParams): 
   }
 
   const cleanOtp = otpCode!.trim();
+  const activeResendKey = getEffectiveResendKey();
 
   // Format message text with line breaks converted to HTML <br>
   const formattedMessageHtml = message ? message.replace(/\n/g, '<br>') : '';
@@ -119,7 +134,8 @@ export const sendTransactionalEmail = async (params: TransactionalEmailParams): 
         badgeColor,
         message: formattedMessageHtml,
         detailsHtml,
-        otpCode: cleanOtp
+        otpCode: cleanOtp,
+        apiKey: activeResendKey
       }),
     });
 
@@ -144,7 +160,8 @@ export const sendTransactionalEmail = async (params: TransactionalEmailParams): 
       body: JSON.stringify({
         toEmail,
         toName,
-        otpCode: cleanOtp
+        otpCode: cleanOtp,
+        apiKey: activeResendKey
       }),
     });
 
@@ -176,7 +193,8 @@ export const sendTransactionalEmail = async (params: TransactionalEmailParams): 
         badgeColor,
         message: formattedMessageHtml,
         detailsHtml,
-        otpCode: cleanOtp
+        otpCode: cleanOtp,
+        apiKey: activeResendKey
       }),
     });
 
@@ -191,8 +209,8 @@ export const sendTransactionalEmail = async (params: TransactionalEmailParams): 
     console.warn('[Email Service] Direct Cloud Run backend exception:', err);
   }
 
-  // 2. Secondary Choice: Direct Client-Side Resend API call if VITE_RESEND_API_KEY is configured
-  if (isValidResendKey(RESEND_API_KEY)) {
+  // 2. Secondary Choice: Direct Client-Side Resend API call if a valid key is available
+  if (isValidResendKey(activeResendKey)) {
     try {
       const htmlContent = isFullHtmlDocument ? detailsHtml : `<!DOCTYPE html>
 <html>
@@ -233,10 +251,11 @@ If you have any questions, contact support at <a href="mailto:fundora.one@gmail.
 </body>
 </html>`;
 
-      const res = await fetch('https://api.resend.com/emails', {
+      // Attempt 1: Custom Sender (no-reply@fundora.one)
+      const res1 = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${RESEND_API_KEY}`,
+          'Authorization': `Bearer ${activeResendKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -247,8 +266,33 @@ If you have any questions, contact support at <a href="mailto:fundora.one@gmail.
         }),
       });
 
-      if (res.ok) return { success: true };
-      const clientErr = await res.json().catch(() => ({}));
+      if (res1.ok) {
+        console.log(`[Email Service] Direct Resend client dispatch succeeded with ${RESEND_FROM_EMAIL}`);
+        return { success: true };
+      }
+
+      // If custom domain fails, Attempt 2: onboarding@resend.dev
+      console.warn(`[Email Service] Direct Resend attempt 1 failed (${res1.status}). Retrying with onboarding@resend.dev...`);
+      const res2 = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${activeResendKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: 'Fundora <onboarding@resend.dev>',
+          to: [toEmail],
+          subject: subject,
+          html: htmlContent,
+        }),
+      });
+
+      if (res2.ok) {
+        console.log(`[Email Service] Direct Resend client dispatch succeeded with onboarding@resend.dev`);
+        return { success: true };
+      }
+
+      const clientErr = await res2.json().catch(() => ({}));
       if (clientErr.message || clientErr.error) {
         serverErrorMessage = clientErr.message || clientErr.error;
       }
