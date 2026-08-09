@@ -30,10 +30,10 @@ export const getApiUrl = (path: string): string => {
   const isDev = import.meta.env.DEV || import.meta.env.MODE === 'development';
   const defaultBaseUrl = isDev ? CLOUD_RUN_DEV_URL : CLOUD_RUN_PRE_URL;
 
-  // 3. Fallback: Inspect browser / hybrid container context
+  // 3. Inspect browser / hybrid container context
   if (typeof window !== 'undefined' && window.location) {
     const origin = window.location.origin || '';
-    const host = window.location.host || '';
+    const protocol = window.location.protocol || '';
 
     // Check Capacitor or native platform bridge
     const isCapacitor = !!((window as any).Capacitor && (
@@ -41,28 +41,18 @@ export const getApiUrl = (path: string): string => {
       ((window as any).Capacitor.getPlatform && (window as any).Capacitor.getPlatform() !== 'web')
     ));
     
-    // Check local protocols/schemas
-    const isLocalFile = origin.startsWith('file:') || origin.startsWith('capacitor:') || origin.startsWith('app:') || origin.startsWith('ionic:');
-    
-    // Detect mobile/local WebViews that run on localhost but are NOT actual developer instances.
-    const isLocalHost = host.includes('localhost') || host.includes('127.0.0.1');
-    const isWebViewLocalhost = isLocalHost && !isDev;
+    // Check local file/native protocols
+    const isLocalFile = protocol.startsWith('file') || protocol.startsWith('capacitor') || protocol.startsWith('app') || protocol.startsWith('ionic');
 
-    // Detect fundora.one static web host or mobile APK environments
-    const isFundoraStaticDomain = origin.includes('fundora.one') || host.includes('fundora.one');
-    const isNativeOrHybrid = isCapacitor || isLocalFile || isWebViewLocalhost || isFundoraStaticDomain;
-
-    // Only use origin as API base URL if we are running in AI Studio Cloud Run container directly (ais-dev or ais-pre)
-    // AND NOT on fundora.one static site or mobile APK app!
-    if (!isNativeOrHybrid && origin.startsWith('http') && !isLocalHost) {
-      if (origin.includes('ais-dev-') || origin.includes('ais-pre-') || origin.includes('run.app')) {
-        localStorage.setItem('inv_last_known_web_origin', origin);
-        return `${origin}${formattedPath}`;
-      }
+    // On standard web browsers (Vercel, Netlify, custom domain, AI Studio, Localhost), always use origin
+    // so relative /api/* requests hit local Vercel serverless functions or local Express server directly.
+    if (!isCapacitor && !isLocalFile && origin && (protocol === 'http:' || protocol === 'https:')) {
+      localStorage.setItem('inv_last_known_web_origin', origin);
+      return `${origin.replace(/\/$/, '')}${formattedPath}`;
     }
   }
 
-  // 4. Default fallback to Cloud Run Backend (which has active Express server.ts & Resend API key)
+  // 4. Default fallback to Cloud Run Backend for native mobile APK / local file protocol
   return `${defaultBaseUrl}${formattedPath}`;
 };
 
