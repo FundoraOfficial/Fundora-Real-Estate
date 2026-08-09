@@ -200,7 +200,7 @@ If you have any questions, contact support at <a href="mailto:fundora.one@gmail.
 </html>`;
 
     // 1. Dispatch strictly via Resend API
-    const resendApiKey = (req.body.apiKey || req.body.resendApiKey || process.env.RESEND_API_KEY || process.env.VITE_RESEND_API_KEY || "").trim();
+    const resendApiKey = (process.env.RESEND_API_KEY || process.env.VITE_RESEND_API_KEY || req.body?.apiKey || "").trim();
     let resendFromEmail = (process.env.RESEND_FROM_EMAIL || process.env.VITE_RESEND_FROM_EMAIL || "no-reply@fundora.one").trim();
 
     if (!resendFromEmail || resendFromEmail.toLowerCase().includes("gmail.com") || resendFromEmail.toLowerCase().includes("yahoo.com") || resendFromEmail.toLowerCase().includes("hotmail.com")) {
@@ -287,7 +287,7 @@ If you have any questions, contact support at <a href="mailto:fundora.one@gmail.
       });
     }
 
-    const resendApiKey = (req.body.apiKey || req.body.resendApiKey || process.env.RESEND_API_KEY || process.env.VITE_RESEND_API_KEY || "").trim();
+    const resendApiKey = (process.env.RESEND_API_KEY || process.env.VITE_RESEND_API_KEY || req.body?.apiKey || "").trim();
     let resendFromEmail = (process.env.RESEND_FROM_EMAIL || process.env.VITE_RESEND_FROM_EMAIL || "no-reply@fundora.one").trim();
     if (!resendFromEmail || resendFromEmail.toLowerCase().includes("gmail.com") || resendFromEmail.toLowerCase().includes("yahoo.com") || resendFromEmail.toLowerCase().includes("hotmail.com")) {
       resendFromEmail = "no-reply@fundora.one";

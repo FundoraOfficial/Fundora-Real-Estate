@@ -31,14 +31,6 @@ const isValidResendKey = (key: string): boolean => {
 export const getEffectiveResendKey = (): string => {
   const envKey = (import.meta.env.VITE_RESEND_API_KEY || '').trim();
   if (isValidResendKey(envKey)) return envKey;
-  
-  try {
-    if (typeof localStorage !== 'undefined') {
-      const localKey = (localStorage.getItem('inv_resend_api_key') || localStorage.getItem('inv_admin_resend_api_key') || '').trim();
-      if (isValidResendKey(localKey)) return localKey;
-    }
-  } catch (_) {}
-
   return '';
 };
 
@@ -94,8 +86,7 @@ export interface TransactionalEmailParams {
 }
 
 /**
- * Universal transactional email sender across Vercel Resend API Serverless Proxy and Direct Resend API.
- * Gmail, Google Apps Script Proxy, and all legacy email fallbacks have been permanently revoked.
+ * Universal transactional email sender via Vercel Resend API Serverless Proxy (/api/send-email).
  */
 export const sendTransactionalEmail = async (params: TransactionalEmailParams): Promise<{ success: boolean; error?: string }> => {
   const { toEmail, toName, subject, title, badge, badgeColor, message, detailsHtml, otpCode } = params;
@@ -118,9 +109,9 @@ export const sendTransactionalEmail = async (params: TransactionalEmailParams): 
 
   const isFullHtmlDocument = detailsHtml && (detailsHtml.includes('<!DOCTYPE') || detailsHtml.includes('<html'));
 
-  // 1. Primary Choice: Express / Vercel Serverless API (/api/send-email) - Dispatches strictly via Resend API
   let serverErrorMessage = '';
 
+  // 1. Primary Endpoint: /api/send-email (Vercel Serverless Function or Express server)
   try {
     const response = await fetchWithFallback('/api/send-email', {
       method: 'POST',
@@ -152,7 +143,7 @@ export const sendTransactionalEmail = async (params: TransactionalEmailParams): 
     serverErrorMessage = err?.message || 'Network request failed';
   }
 
-  // 1b. Fallback Serverless Endpoint: /api/send-otp
+  // 2. Fallback Serverless Endpoint: /api/send-otp
   try {
     const responseOtp = await fetchWithFallback('/api/send-otp', {
       method: 'POST',
@@ -177,39 +168,7 @@ export const sendTransactionalEmail = async (params: TransactionalEmailParams): 
     console.warn('[Email Service] /api/send-otp endpoint exception:', err);
   }
 
-  // 1c. Direct Production Cloud Run Backend Fallback
-  try {
-    const directPreBackend = 'https://ais-pre-hb5de275kkaohqffdp2qfz-614235734610.asia-southeast1.run.app/api/send-email';
-    console.log(`[Email Service] Attempting direct Cloud Run backend dispatch: ${directPreBackend}`);
-    const directRes = await fetch(directPreBackend, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        toEmail,
-        toName,
-        subject,
-        title,
-        badge,
-        badgeColor,
-        message: formattedMessageHtml,
-        detailsHtml,
-        otpCode: cleanOtp,
-        apiKey: activeResendKey
-      }),
-    });
-
-    const directData = await directRes.json().catch(() => ({}));
-    if (directRes.ok && directData.success) {
-      console.log(`[Email Service] Successfully dispatched OTP email to ${toEmail} via Direct Cloud Run Backend`);
-      return { success: true };
-    } else if (directData.error) {
-      serverErrorMessage = directData.error;
-    }
-  } catch (err: any) {
-    console.warn('[Email Service] Direct Cloud Run backend exception:', err);
-  }
-
-  // 2. Secondary Choice: Direct Client-Side Resend API call if a valid key is available
+  // 3. Client-Side Fallback via direct Resend API call if VITE_RESEND_API_KEY is defined
   if (isValidResendKey(activeResendKey)) {
     try {
       const htmlContent = isFullHtmlDocument ? detailsHtml : `<!DOCTYPE html>
@@ -251,7 +210,6 @@ If you have any questions, contact support at <a href="mailto:fundora.one@gmail.
 </body>
 </html>`;
 
-      // Attempt 1: Custom Sender (no-reply@fundora.one)
       const res1 = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
@@ -271,8 +229,6 @@ If you have any questions, contact support at <a href="mailto:fundora.one@gmail.
         return { success: true };
       }
 
-      // If custom domain fails, Attempt 2: onboarding@resend.dev
-      console.warn(`[Email Service] Direct Resend attempt 1 failed (${res1.status}). Retrying with onboarding@resend.dev...`);
       const res2 = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
@@ -303,7 +259,7 @@ If you have any questions, contact support at <a href="mailto:fundora.one@gmail.
 
   return {
     success: false,
-    error: serverErrorMessage || 'Could not dispatch OTP email via Resend API. Please check your RESEND_API_KEY in environment variables.'
+    error: serverErrorMessage || 'Could not dispatch OTP email via Resend API. Please check your RESEND_API_KEY in Vercel environment variables.'
   };
 };
 

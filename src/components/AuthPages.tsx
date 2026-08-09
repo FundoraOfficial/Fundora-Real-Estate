@@ -113,13 +113,6 @@ export default function AuthPages({ initialScreen = 'login', onAuthSuccess, onNa
   const [generatedOtp, setGeneratedOtp] = useState('');
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [emailSendError, setEmailSendError] = useState<string | null>(null);
-  const [customResendKey, setCustomResendKey] = useState(() => {
-    try {
-      return typeof localStorage !== 'undefined' ? (localStorage.getItem('inv_resend_api_key') || localStorage.getItem('inv_admin_resend_api_key') || '') : '';
-    } catch (_) {
-      return '';
-    }
-  });
   const [showMockFallback, setShowMockFallback] = useState(false);
   const [showBackupCode, setShowBackupCode] = useState(false);
   const [newPassword, setNewPassword] = useState('');
@@ -1580,40 +1573,9 @@ export default function AuthPages({ initialScreen = 'login', onAuthSuccess, onNa
                 </p>
 
                 {emailSendError && (
-                  <div className="p-3 bg-red-500/10 border border-red-500/30 text-red-300 rounded-xl text-[11px] leading-relaxed text-left font-sans mb-1 space-y-2">
-                    <div>
-                      <p className="font-extrabold uppercase tracking-wide text-[9px] text-red-400">⚠️ Email Delivery Notice</p>
-                      <p className="text-slate-300 font-mono mt-0.5 text-[10px] break-all">{emailSendError}</p>
-                    </div>
-                    <p className="text-slate-400 text-[10px]">
-                      Set <code className="text-amber-400 font-mono">RESEND_API_KEY</code> in Vercel Environment Variables OR save your API key below (<code className="text-amber-400 font-mono">re_...</code>):
-                    </p>
-                    <div className="flex items-center gap-2 pt-0.5">
-                      <input
-                        type="password"
-                        placeholder="re_123456789..."
-                        value={customResendKey}
-                        onChange={(e) => setCustomResendKey(e.target.value)}
-                        className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-[11px] font-mono text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const k = customResendKey.trim();
-                          if (k.startsWith('re_') && k.length >= 25) {
-                            localStorage.setItem('inv_resend_api_key', k);
-                            localStorage.setItem('inv_admin_resend_api_key', k);
-                            setEmailSendError('');
-                            alert('✅ Resend API Key saved! Click "Resend Code" below to deliver OTP email instantly.');
-                          } else {
-                            alert('❌ Please enter a valid Resend API Key starting with "re_" (from resend.com).');
-                          }
-                        }}
-                        className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-[10px] transition cursor-pointer whitespace-nowrap"
-                      >
-                        Save Key
-                      </button>
-                    </div>
+                  <div className="p-3 bg-red-500/10 border border-red-500/30 text-red-300 rounded-xl text-[11px] leading-relaxed text-left font-sans mb-1">
+                    <p className="font-extrabold uppercase tracking-wide text-[9px] text-red-400">⚠️ Email Delivery Notice</p>
+                    <p className="text-slate-300 font-mono mt-0.5 text-[10px] break-all">{emailSendError}</p>
                   </div>
                 )}
 
@@ -1747,40 +1709,9 @@ export default function AuthPages({ initialScreen = 'login', onAuthSuccess, onNa
                 </p>
 
                 {emailSendError && (
-                  <div className="p-3 bg-red-500/10 border border-red-500/30 text-red-300 rounded-xl text-[11px] leading-relaxed text-left font-sans mb-1 space-y-2">
-                    <div>
-                      <p className="font-extrabold uppercase tracking-wide text-[9px] text-red-400">⚠️ Email Delivery Notice</p>
-                      <p className="text-slate-300 font-mono mt-0.5 text-[10px] break-all">{emailSendError}</p>
-                    </div>
-                    <p className="text-slate-400 text-[10px]">
-                      Set <code className="text-amber-400 font-mono">RESEND_API_KEY</code> in Vercel Environment Variables OR save your API key below (<code className="text-amber-400 font-mono">re_...</code>):
-                    </p>
-                    <div className="flex items-center gap-2 pt-0.5">
-                      <input
-                        type="password"
-                        placeholder="re_123456789..."
-                        value={customResendKey}
-                        onChange={(e) => setCustomResendKey(e.target.value)}
-                        className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-[11px] font-mono text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const k = customResendKey.trim();
-                          if (k.startsWith('re_') && k.length >= 25) {
-                            localStorage.setItem('inv_resend_api_key', k);
-                            localStorage.setItem('inv_admin_resend_api_key', k);
-                            setEmailSendError('');
-                            alert('✅ Resend API Key saved! Click "Resend Code" below to deliver OTP email instantly.');
-                          } else {
-                            alert('❌ Please enter a valid Resend API Key starting with "re_" (from resend.com).');
-                          }
-                        }}
-                        className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-[10px] transition cursor-pointer whitespace-nowrap"
-                      >
-                        Save Key
-                      </button>
-                    </div>
+                  <div className="p-3 bg-red-500/10 border border-red-500/30 text-red-300 rounded-xl text-[11px] leading-relaxed text-left font-sans mb-1">
+                    <p className="font-extrabold uppercase tracking-wide text-[9px] text-red-400">⚠️ Email Delivery Notice</p>
+                    <p className="text-slate-300 font-mono mt-0.5 text-[10px] break-all">{emailSendError}</p>
                   </div>
                 )}
 
