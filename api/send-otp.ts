@@ -126,26 +126,23 @@ If you have any questions, contact support at <a href="mailto:fundora.one@gmail.
     });
 
     if (!resendResponse.ok && resendFromEmail !== "onboarding@resend.dev") {
-      const firstErrText = await resendResponse.clone().text().catch(() => "");
-      if (firstErrText.includes("domain") || firstErrText.includes("verify") || firstErrText.includes("not_verified") || resendResponse.status === 403 || resendResponse.status === 422) {
-        console.warn(`[Send OTP API] Custom sender (${resendFromEmail}) rejected by Resend (${resendResponse.status}). Trying onboarding@resend.dev fallback...`);
-        const fallbackResponse = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${resendApiKey}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            from: "Fundora <onboarding@resend.dev>",
-            to: [toEmail],
-            subject: "Your Fundora Verification Code",
-            html: htmlContent
-          })
-        });
+      console.warn(`[Send OTP API] Custom sender (${resendFromEmail}) rejected by Resend (${resendResponse.status}). Trying onboarding@resend.dev fallback...`);
+      const fallbackResponse = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${resendApiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          from: "Fundora <onboarding@resend.dev>",
+          to: [toEmail],
+          subject: "Your Fundora Verification Code",
+          html: htmlContent
+        })
+      });
 
-        if (fallbackResponse.ok) {
-          resendResponse = fallbackResponse;
-        }
+      if (fallbackResponse.ok) {
+        resendResponse = fallbackResponse;
       }
     }
 

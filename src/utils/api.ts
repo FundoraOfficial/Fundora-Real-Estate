@@ -67,33 +67,45 @@ export const fetchWithFallback = async (path: string, options: RequestInit = {})
     const contentType = response.headers.get("content-type") || "";
     const isHtmlResponse = contentType.includes("text/html");
 
-    // If status is not OK OR if response is HTML (meaning host served static index.html SPA fallback instead of real API JSON)
-    if (!response.ok || isHtmlResponse) {
-      console.warn(`[API Proxy] Primary URL (${primaryUrl}) returned invalid response (status: ${response.status}, contentType: ${contentType}). Trying Cloud Run backend failover...`);
-      throw new Error(`Endpoint returned invalid response (status: ${response.status}, contentType: ${contentType})`);
+    // If server responded with non-HTML content (e.g. JSON API response), return it directly!
+    // Even if status is 4xx or 5xx, caller can parse JSON error details (e.g. Resend error messages).
+    if (!isHtmlResponse) {
+      return response;
     }
 
-    return response;
+    // Response is HTML SPA fallback (meaning server served index.html because endpoint doesn't exist)
+    console.warn(`[API Proxy] Primary URL (${primaryUrl}) returned static HTML instead of API JSON.`);
+    throw new Error(`Endpoint returned static HTML fallback.`);
   } catch (err: any) {
-    console.warn(`[API Proxy] Primary URL (${primaryUrl}) failed: ${err.message || err}. Initiating smart failover to Cloud Run backends...`);
+    console.warn(`[API Proxy] Primary URL (${primaryUrl}) failed: ${err.message || err}`);
 
-    const fallbackTargets = [
-      `${CLOUD_RUN_PRE_URL}${formattedPath}`,
-      `${CLOUD_RUN_DEV_URL}${formattedPath}`
-    ].filter(url => url !== primaryUrl);
+    // Only attempt Cloud Run container failover if running inside AI Studio preview or localhost
+    const isAiStudioOrLocal = typeof window !== 'undefined' && window.location && (
+      window.location.origin.includes('ais-dev-') || 
+      window.location.origin.includes('ais-pre-') || 
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1'
+    );
 
-    for (const targetUrl of fallbackTargets) {
-      try {
-        console.log(`[API Proxy] Failover fetch attempt to: ${targetUrl}`);
-        const fbRes = await fetch(targetUrl, options);
-        const fbContentType = fbRes.headers.get("content-type") || "";
-        
-        if (fbRes.ok && !fbContentType.includes("text/html")) {
-          console.log(`[API Proxy] Failover to ${targetUrl} succeeded!`);
-          return fbRes;
+    if (isAiStudioOrLocal) {
+      const fallbackTargets = [
+        `${CLOUD_RUN_PRE_URL}${formattedPath}`,
+        `${CLOUD_RUN_DEV_URL}${formattedPath}`
+      ].filter(url => url !== primaryUrl);
+
+      for (const targetUrl of fallbackTargets) {
+        try {
+          console.log(`[API Proxy] Failover fetch attempt to: ${targetUrl}`);
+          const fbRes = await fetch(targetUrl, options);
+          const fbContentType = fbRes.headers.get("content-type") || "";
+          
+          if (!fbContentType.includes("text/html")) {
+            console.log(`[API Proxy] Failover to ${targetUrl} succeeded!`);
+            return fbRes;
+          }
+        } catch (fbErr: any) {
+          console.warn(`[API Proxy] Failover to ${targetUrl} failed:`, fbErr?.message || fbErr);
         }
-      } catch (fbErr: any) {
-        console.warn(`[API Proxy] Failover to ${targetUrl} failed:`, fbErr?.message || fbErr);
       }
     }
 

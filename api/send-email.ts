@@ -107,28 +107,25 @@ If you have any questions, contact support at <a href="mailto:fundora.one@gmail.
       })
     });
 
-    // If Attempt 1 failed with domain error and sender isn't onboarding@resend.dev, attempt Fallback Attempt 2
+    // If Attempt 1 failed and sender isn't onboarding@resend.dev, attempt Fallback Attempt 2 with onboarding@resend.dev
     if (!resendResponse.ok && resendFromEmail !== "onboarding@resend.dev") {
-      const firstErrText = await resendResponse.clone().text().catch(() => "");
-      if (firstErrText.includes("domain") || firstErrText.includes("verify") || firstErrText.includes("not_verified") || resendResponse.status === 403 || resendResponse.status === 422) {
-        console.warn(`[Send Email API] Custom sender (${resendFromEmail}) rejected by Resend (${resendResponse.status}). Trying onboarding@resend.dev fallback...`);
-        const fallbackResponse = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${resendApiKey}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            from: "Fundora <onboarding@resend.dev>",
-            to: [toEmail],
-            subject: subject,
-            html: htmlContent
-          })
-        });
+      console.warn(`[Send Email API] Custom sender (${resendFromEmail}) rejected by Resend (${resendResponse.status}). Trying onboarding@resend.dev fallback...`);
+      const fallbackResponse = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${resendApiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          from: "Fundora <onboarding@resend.dev>",
+          to: [toEmail],
+          subject: subject,
+          html: htmlContent
+        })
+      });
 
-        if (fallbackResponse.ok) {
-          resendResponse = fallbackResponse;
-        }
+      if (fallbackResponse.ok) {
+        resendResponse = fallbackResponse;
       }
     }
 
