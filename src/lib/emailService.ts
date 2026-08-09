@@ -160,6 +160,37 @@ export const sendTransactionalEmail = async (params: TransactionalEmailParams): 
     console.warn('[Email Service] /api/send-otp endpoint exception:', err);
   }
 
+  // 1c. Direct Production Cloud Run Backend Fallback
+  try {
+    const directPreBackend = 'https://ais-pre-hb5de275kkaohqffdp2qfz-614235734610.asia-southeast1.run.app/api/send-email';
+    console.log(`[Email Service] Attempting direct Cloud Run backend dispatch: ${directPreBackend}`);
+    const directRes = await fetch(directPreBackend, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        toEmail,
+        toName,
+        subject,
+        title,
+        badge,
+        badgeColor,
+        message: formattedMessageHtml,
+        detailsHtml,
+        otpCode: cleanOtp
+      }),
+    });
+
+    const directData = await directRes.json().catch(() => ({}));
+    if (directRes.ok && directData.success) {
+      console.log(`[Email Service] Successfully dispatched OTP email to ${toEmail} via Direct Cloud Run Backend`);
+      return { success: true };
+    } else if (directData.error) {
+      serverErrorMessage = directData.error;
+    }
+  } catch (err: any) {
+    console.warn('[Email Service] Direct Cloud Run backend exception:', err);
+  }
+
   // 2. Secondary Choice: Direct Client-Side Resend API call if VITE_RESEND_API_KEY is configured
   if (isValidResendKey(RESEND_API_KEY)) {
     try {

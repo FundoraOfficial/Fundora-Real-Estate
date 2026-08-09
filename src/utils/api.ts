@@ -1,6 +1,9 @@
 /**
- * Utility to resolve API URLs, especially for hybrid environments (e.g. mobile APKs).
+ * Utility to resolve API URLs, especially for hybrid environments (e.g. mobile APKs and fundora.one static host).
  */
+
+const CLOUD_RUN_PRE_URL = 'https://ais-pre-hb5de275kkaohqffdp2qfz-614235734610.asia-southeast1.run.app';
+const CLOUD_RUN_DEV_URL = 'https://ais-dev-hb5de275kkaohqffdp2qfz-614235734610.asia-southeast1.run.app';
 
 export const getApiUrl = (path: string): string => {
   // Ensure path starts with a slash
@@ -24,14 +27,10 @@ export const getApiUrl = (path: string): string => {
     } catch (_) {}
   }
 
-  // Define fallback URLs for Dev and Pre/Prod backends (Cloud Run containers)
-  const devUrl = 'https://ais-dev-hb5de275kkaohqffdp2qfz-614235734610.asia-southeast1.run.app';
-  const preUrl = 'https://ais-pre-hb5de275kkaohqffdp2qfz-614235734610.asia-southeast1.run.app';
   const isDev = import.meta.env.DEV || import.meta.env.MODE === 'development';
-  const defaultBaseUrl = isDev ? devUrl : preUrl;
+  const defaultBaseUrl = isDev ? CLOUD_RUN_DEV_URL : CLOUD_RUN_PRE_URL;
 
-  // 3. Fallback: If running in a regular web browser (NOT a Capacitor native webview/APK/local page),
-  // we can use the current browser's origin. This ensures perfect CORS compliance when no custom URL is configured.
+  // 3. Fallback: Inspect browser / hybrid container context
   if (typeof window !== 'undefined' && window.location) {
     const origin = window.location.origin || '';
     const host = window.location.host || '';
@@ -46,27 +45,24 @@ export const getApiUrl = (path: string): string => {
     const isLocalFile = origin.startsWith('file:') || origin.startsWith('capacitor:') || origin.startsWith('app:') || origin.startsWith('ionic:');
     
     // Detect mobile/local WebViews that run on localhost but are NOT actual developer instances.
-    // If running in production mode, any localhost or 127.0.0.1 is definitely a mobile webview container!
     const isLocalHost = host.includes('localhost') || host.includes('127.0.0.1');
     const isWebViewLocalhost = isLocalHost && !isDev;
 
-    const isNativeOrHybrid = isCapacitor || isLocalFile || isWebViewLocalhost;
+    // Detect fundora.one static web host or mobile APK environments
+    const isFundoraStaticDomain = origin.includes('fundora.one') || host.includes('fundora.one');
+    const isNativeOrHybrid = isCapacitor || isLocalFile || isWebViewLocalhost || isFundoraStaticDomain;
 
-    // Only use origin as API base URL if we are in a normal web browser and NOT a native hybrid container.
-    // Also, we want to save this origin to cached fallback only if it's a real live cloud domain (starts with http and is not localhost).
+    // Only use origin as API base URL if we are running in AI Studio Cloud Run container directly (ais-dev or ais-pre)
+    // AND NOT on fundora.one static site or mobile APK app!
     if (!isNativeOrHybrid && origin.startsWith('http') && !isLocalHost) {
-      localStorage.setItem('inv_last_known_web_origin', origin);
-      return `${origin}${formattedPath}`;
+      if (origin.includes('ais-dev-') || origin.includes('ais-pre-') || origin.includes('run.app')) {
+        localStorage.setItem('inv_last_known_web_origin', origin);
+        return `${origin}${formattedPath}`;
+      }
     }
   }
 
-  // 4. Fallback to last known web origin saved in localStorage (making sure it's not a localhost address)
-  const lastKnown = localStorage.getItem('inv_last_known_web_origin');
-  if (lastKnown && !lastKnown.includes('localhost') && !lastKnown.includes('127.0.0.1')) {
-    return `${lastKnown.trim().replace(/\/$/, '')}${formattedPath}`;
-  }
-
-  // 5. Ultimate fallback to the current live URL of the platform matching the development/production stage
+  // 4. Default fallback to Cloud Run Backend (which has active Express server.ts & Resend API key)
   return `${defaultBaseUrl}${formattedPath}`;
 };
 
@@ -78,63 +74,40 @@ export const fetchWithFallback = async (path: string, options: RequestInit = {})
     console.log(`[API Proxy] Primary fetch attempt to: ${primaryUrl}`);
     const response = await fetch(primaryUrl, options);
     
-    // If it's a 404 (endpoint not deployed yet) or a gateway/server offline error (>= 500), we failover
-    if (!response.ok && (response.status === 404 || response.status >= 500)) {
-      throw new Error(`Server returned error status: ${response.status}`);
+    const contentType = response.headers.get("content-type") || "";
+    const isHtmlResponse = contentType.includes("text/html");
+
+    // If status is not OK OR if response is HTML (meaning host served static index.html SPA fallback instead of real API JSON)
+    if (!response.ok || isHtmlResponse) {
+      console.warn(`[API Proxy] Primary URL (${primaryUrl}) returned invalid response (status: ${response.status}, contentType: ${contentType}). Trying Cloud Run backend failover...`);
+      throw new Error(`Endpoint returned invalid response (status: ${response.status}, contentType: ${contentType})`);
     }
+
     return response;
   } catch (err: any) {
-    console.warn(`[API Proxy] Primary URL (${primaryUrl}) unreachable or failed: ${err.message || err}. Initiating smart environment failover...`);
+    console.warn(`[API Proxy] Primary URL (${primaryUrl}) failed: ${err.message || err}. Initiating smart failover to Cloud Run backends...`);
 
-    // In a browser, try falling back to the SAME ORIGIN first if we didn't already try it
-    if (typeof window !== 'undefined' && window.location) {
-      const origin = window.location.origin;
-      const isCapacitor = !!((window as any).Capacitor && (
-        (window as any).Capacitor.isNative || 
-        ((window as any).Capacitor.getPlatform && (window as any).Capacitor.getPlatform() !== 'web')
-      ));
-      const isLocalFile = origin.startsWith('file:') || origin.startsWith('capacitor:') || origin.startsWith('app:');
-      
-      if (!isCapacitor && !isLocalFile && origin.startsWith('http')) {
-        const sameOriginUrl = `${origin}${formattedPath}`;
-        if (sameOriginUrl !== primaryUrl) {
-          console.log(`[API Proxy] Same-origin browser fallback attempt: ${sameOriginUrl}`);
-          try {
-            const fallbackResponse = await fetch(sameOriginUrl, options);
-            if (fallbackResponse.ok) {
-              return fallbackResponse;
-            }
-          } catch (fallbackErr: any) {
-            console.warn(`[API Proxy] Same-origin fallback failed:`, fallbackErr);
-          }
+    const fallbackTargets = [
+      `${CLOUD_RUN_PRE_URL}${formattedPath}`,
+      `${CLOUD_RUN_DEV_URL}${formattedPath}`
+    ].filter(url => url !== primaryUrl);
+
+    for (const targetUrl of fallbackTargets) {
+      try {
+        console.log(`[API Proxy] Failover fetch attempt to: ${targetUrl}`);
+        const fbRes = await fetch(targetUrl, options);
+        const fbContentType = fbRes.headers.get("content-type") || "";
+        
+        if (fbRes.ok && !fbContentType.includes("text/html")) {
+          console.log(`[API Proxy] Failover to ${targetUrl} succeeded!`);
+          return fbRes;
         }
+      } catch (fbErr: any) {
+        console.warn(`[API Proxy] Failover to ${targetUrl} failed:`, fbErr?.message || fbErr);
       }
     }
 
-    const devUrl = 'https://ais-dev-hb5de275kkaohqffdp2qfz-614235734610.asia-southeast1.run.app';
-    const preUrl = 'https://ais-pre-hb5de275kkaohqffdp2qfz-614235734610.asia-southeast1.run.app';
-
-    let fallbackUrl = '';
-    if (primaryUrl.includes('fundora.one') || primaryUrl.includes('ais-pre-')) {
-      fallbackUrl = `${devUrl}${formattedPath}`;
-    } else if (primaryUrl.includes('ais-dev-')) {
-      fallbackUrl = `${preUrl}${formattedPath}`;
-    } else {
-      fallbackUrl = `${devUrl}${formattedPath}`;
-    }
-
-    console.log(`[API Proxy] Failover fetch attempt to: ${fallbackUrl}`);
-    try {
-      const fallbackResponse = await fetch(fallbackUrl, options);
-      if (!fallbackResponse.ok) {
-        console.warn(`[API Proxy] Fallback URL (${fallbackUrl}) returned status: ${fallbackResponse.status}`);
-      }
-      return fallbackResponse;
-    } catch (fallbackErr: any) {
-      console.error(`[API Proxy] Fallback URL (${fallbackUrl}) also failed:`, fallbackErr);
-      // Re-throw to propagate back to caller
-      throw fallbackErr;
-    }
+    throw err;
   }
 };
 
