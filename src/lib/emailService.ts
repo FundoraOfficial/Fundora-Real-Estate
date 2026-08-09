@@ -30,7 +30,7 @@ const isValidResendKey = (key: string): boolean => {
 
 // Resend API (Completely free, branding-free, custom-domain transactional mail)
 const RESEND_API_KEY = (import.meta.env.VITE_RESEND_API_KEY || '').trim();
-const RESEND_FROM_EMAIL = (import.meta.env.VITE_RESEND_FROM_EMAIL || 'fundora.one@gmail.com').trim();
+const RESEND_FROM_EMAIL = (import.meta.env.VITE_RESEND_FROM_EMAIL || 'no-reply@fundora.one').trim();
 const EMAIL_SERVICE_ACTIVE = (import.meta.env.VITE_EMAIL_SERVICE_ACTIVE || '').trim().toLowerCase() === 'true';
 
 // Secure Custom Proxy (Optional custom proxy webhook if configured via environment variable)

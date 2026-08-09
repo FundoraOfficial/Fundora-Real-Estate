@@ -48,9 +48,38 @@ import {
   Inquiry
 } from '../types';
 
+let isQuotaExceededGlobal = false;
+
+export const isQuotaError = (err: any): boolean => {
+  if (!err) return false;
+  const msg = typeof err === 'string' ? err : (err.message || err.toString() || '');
+  const code = (err.code || '').toLowerCase();
+  const lowerMsg = msg.toLowerCase();
+  return (
+    code.includes('resource-exhausted') ||
+    code.includes('quota') ||
+    lowerMsg.includes('quota limit exceeded') ||
+    lowerMsg.includes('quota exceeded') ||
+    lowerMsg.includes('resource_exhausted') ||
+    lowerMsg.includes('free daily read units') ||
+    lowerMsg.includes('quota metric')
+  );
+};
+
+export const handleQuotaExceeded = (err: any, contextStr: string): boolean => {
+  if (isQuotaError(err)) {
+    if (!isQuotaExceededGlobal) {
+      isQuotaExceededGlobal = true;
+      console.warn(`[Firestore Quota Notice] ${contextStr}: Free daily Firestore quota limit reached. Application switching seamlessly to local storage cache mode.`);
+    }
+    return true;
+  }
+  return false;
+};
+
 // Helper to check if Firebase is correctly configured and working
 export const isFirebaseEnabled = (): boolean => {
-  return !!db;
+  return !!db && !isQuotaExceededGlobal;
 };
 
 // Seed initial data if the Firestore collections are completely empty
@@ -150,7 +179,9 @@ export const seedInitialDataIfEmpty = async () => {
 
     console.log('Firestore initialization & seeding successfully finished.');
   } catch (error) {
-    console.error('Error during Firestore seeding:', error);
+    if (!handleQuotaExceeded(error, 'Firestore Seeding')) {
+      console.error('Error during Firestore seeding:', error);
+    }
   }
 };
 
@@ -179,7 +210,9 @@ export const loadProjectsFromFirebase = async (): Promise<RealEstateProject[] | 
       return p;
     });
   } catch (e) {
-    console.error('Error loading projects from Firebase:', e);
+    if (!handleQuotaExceeded(e, 'loadProjectsFromFirebase')) {
+      console.error('Error loading projects from Firebase:', e);
+    }
     return null;
   }
 };
@@ -285,7 +318,9 @@ export const loadUsersFromFirebase = async (): Promise<UserAccount[] | null> => 
     console.log(`${tag} Cleaned users count: ${deduped.length}. Emails found:`, deduped.map(u => u.email));
     return deduped;
   } catch (e: any) {
-    console.error(`${tag} ERROR loading users from Firebase Firestore:`, e);
+    if (!handleQuotaExceeded(e, 'loadUsersFromFirebase')) {
+      console.error(`${tag} ERROR loading users from Firebase Firestore:`, e);
+    }
     return null;
   }
 };
@@ -298,7 +333,9 @@ export const loadTransactionsFromFirebase = async (): Promise<Transaction[] | nu
     const cleanTxs: Transaction[] = snapshot.docs.map(d => d.data() as Transaction);
     return cleanTxs.sort((a, b) => b.date.localeCompare(a.date));
   } catch (e) {
-    console.error('Error loading transactions from Firebase:', e);
+    if (!handleQuotaExceeded(e, 'loadTransactionsFromFirebase')) {
+      console.error('Error loading transactions from Firebase:', e);
+    }
     return null;
   }
 };
@@ -309,7 +346,9 @@ export const loadInvestmentsFromFirebase = async (): Promise<InvestmentRecord[] 
     const snapshot = await getDocs(collection(db, 'investments'));
     return snapshot.docs.map(d => d.data() as InvestmentRecord);
   } catch (e) {
-    console.error('Error loading investments from Firebase:', e);
+    if (!handleQuotaExceeded(e, 'loadInvestmentsFromFirebase')) {
+      console.error('Error loading investments from Firebase:', e);
+    }
     return null;
   }
 };
@@ -320,7 +359,9 @@ export const loadClaimsFromFirebase = async (): Promise<ProfitClaimRecord[] | nu
     const snapshot = await getDocs(collection(db, 'claims'));
     return snapshot.docs.map(d => d.data() as ProfitClaimRecord);
   } catch (e) {
-    console.error('Error loading claims from Firebase:', e);
+    if (!handleQuotaExceeded(e, 'loadClaimsFromFirebase')) {
+      console.error('Error loading claims from Firebase:', e);
+    }
     return null;
   }
 };
@@ -333,7 +374,9 @@ export const loadSecurityLogsFromFirebase = async (): Promise<SecurityLog[] | nu
     const logs = snapshot.docs.map(d => d.data() as SecurityLog);
     return logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
   } catch (e) {
-    console.error('Error loading security logs from Firebase:', e);
+    if (!handleQuotaExceeded(e, 'loadSecurityLogsFromFirebase')) {
+      console.error('Error loading security logs from Firebase:', e);
+    }
     return null;
   }
 };
@@ -564,10 +607,14 @@ export const subscribeToUsersCollection = (callback: (users: UserAccount[]) => v
         callback([]);
       }
     }, (err) => {
-      console.error('[DEBUG LOG - USERS SUBSCRIPTION ERROR] Real-time users subscription error:', err);
+      if (!handleQuotaExceeded(err, 'subscribeToUsersCollection')) {
+        console.error('[DEBUG LOG - USERS SUBSCRIPTION ERROR] Real-time users subscription error:', err);
+      }
     });
   } catch (err) {
-    console.error('[DEBUG LOG - USERS SUBSCRIPTION CATCH] Exception in subscribeToUsersCollection:', err);
+    if (!handleQuotaExceeded(err, 'subscribeToUsersCollection')) {
+      console.error('[DEBUG LOG - USERS SUBSCRIPTION CATCH] Exception in subscribeToUsersCollection:', err);
+    }
     return () => {};
   }
 };
@@ -584,10 +631,14 @@ export const subscribeToTransactionsCollection = (callback: (txs: Transaction[])
         callback([]);
       }
     }, (err) => {
-      console.warn('Real-time transactions subscription error:', err);
+      if (!handleQuotaExceeded(err, 'subscribeToTransactionsCollection')) {
+        console.warn('Real-time transactions subscription error:', err);
+      }
     });
   } catch (err) {
-    console.warn('Failed to setup transactions snapshot listener:', err);
+    if (!handleQuotaExceeded(err, 'subscribeToTransactionsCollection')) {
+      console.warn('Failed to setup transactions snapshot listener:', err);
+    }
     return () => {};
   }
 };
@@ -603,10 +654,14 @@ export const subscribeToInvestmentsCollection = (callback: (invs: InvestmentReco
         callback([]);
       }
     }, (err) => {
-      console.warn('Real-time investments subscription error:', err);
+      if (!handleQuotaExceeded(err, 'subscribeToInvestmentsCollection')) {
+        console.warn('Real-time investments subscription error:', err);
+      }
     });
   } catch (err) {
-    console.warn('Failed to setup investments snapshot listener:', err);
+    if (!handleQuotaExceeded(err, 'subscribeToInvestmentsCollection')) {
+      console.warn('Failed to setup investments snapshot listener:', err);
+    }
     return () => {};
   }
 };
@@ -622,10 +677,14 @@ export const subscribeToProjectsCollection = (callback: (projs: RealEstateProjec
         callback([]);
       }
     }, (err) => {
-      console.warn('Real-time projects subscription error:', err);
+      if (!handleQuotaExceeded(err, 'subscribeToProjectsCollection')) {
+        console.warn('Real-time projects subscription error:', err);
+      }
     });
   } catch (err) {
-    console.warn('Failed to setup projects snapshot listener:', err);
+    if (!handleQuotaExceeded(err, 'subscribeToProjectsCollection')) {
+      console.warn('Failed to setup projects snapshot listener:', err);
+    }
     return () => {};
   }
 };
@@ -641,10 +700,14 @@ export const subscribeToClaimsCollection = (callback: (claims: ProfitClaimRecord
         callback([]);
       }
     }, (err) => {
-      console.warn('Real-time claims subscription error:', err);
+      if (!handleQuotaExceeded(err, 'subscribeToClaimsCollection')) {
+        console.warn('Real-time claims subscription error:', err);
+      }
     });
   } catch (err) {
-    console.warn('Failed to setup claims snapshot listener:', err);
+    if (!handleQuotaExceeded(err, 'subscribeToClaimsCollection')) {
+      console.warn('Failed to setup claims snapshot listener:', err);
+    }
     return () => {};
   }
 };
@@ -660,10 +723,14 @@ export const subscribeToSecurityLogsCollection = (callback: (logs: SecurityLog[]
         callback([]);
       }
     }, (err) => {
-      console.warn('Real-time security logs subscription error:', err);
+      if (!handleQuotaExceeded(err, 'subscribeToSecurityLogsCollection')) {
+        console.warn('Real-time security logs subscription error:', err);
+      }
     });
   } catch (err) {
-    console.warn('Failed to setup security logs snapshot listener:', err);
+    if (!handleQuotaExceeded(err, 'subscribeToSecurityLogsCollection')) {
+      console.warn('Failed to setup security logs snapshot listener:', err);
+    }
     return () => {};
   }
 };
@@ -680,10 +747,14 @@ export const subscribeToSystemSettings = (callback: (settings: SystemSettings) =
         callback(data);
       }
     }, (err) => {
-      console.warn('Real-time system settings subscription error:', err);
+      if (!handleQuotaExceeded(err, 'subscribeToSystemSettings')) {
+        console.warn('Real-time system settings subscription error:', err);
+      }
     });
   } catch (err) {
-    console.warn('Failed to setup system settings snapshot listener:', err);
+    if (!handleQuotaExceeded(err, 'subscribeToSystemSettings')) {
+      console.warn('Failed to setup system settings snapshot listener:', err);
+    }
     return () => {};
   }
 };
@@ -707,7 +778,9 @@ export const saveTransactionToFirebase = async (tx: Transaction) => {
     await setDoc(doc(db, 'transactions', cleanTx.id), cleanTx);
     console.log(`[saveTransactionToFirebase] SUCCESS written tx doc ID "${cleanTx.id}" for user "${cleanTx.userEmail}".`);
   } catch (e) {
-    console.error('Failed to save transaction to Firebase:', e);
+    if (!handleQuotaExceeded(e, 'saveTransactionToFirebase')) {
+      console.error('Failed to save transaction to Firebase:', e);
+    }
   }
 };
 
@@ -722,7 +795,9 @@ export const saveInvestmentToFirebase = async (inv: InvestmentRecord) => {
     logFirestoreOp('WRITE', 'investments', cleanInv.id, { projectName: cleanInv.projectName, shares: cleanInv.sharesPurchased });
     await setDoc(doc(db, 'investments', cleanInv.id), cleanInv);
   } catch (e) {
-    console.error('Failed to save investment to Firebase:', e);
+    if (!handleQuotaExceeded(e, 'saveInvestmentToFirebase')) {
+      console.error('Failed to save investment to Firebase:', e);
+    }
   }
 };
 
@@ -737,7 +812,9 @@ export const saveClaimToFirebase = async (claim: ProfitClaimRecord) => {
     logFirestoreOp('WRITE', 'claims', cleanClaim.id, { amount: cleanClaim.amount, status: cleanClaim.status });
     await setDoc(doc(db, 'claims', cleanClaim.id), cleanClaim);
   } catch (e) {
-    console.error('Failed to save claim to Firebase:', e);
+    if (!handleQuotaExceeded(e, 'saveClaimToFirebase')) {
+      console.error('Failed to save claim to Firebase:', e);
+    }
   }
 };
 
@@ -748,7 +825,9 @@ export const saveSecurityLogToFirebase = async (log: SecurityLog) => {
     logFirestoreOp('WRITE', 'security_logs', cleanLog.id, { eventType: cleanLog.eventType, status: cleanLog.status });
     await setDoc(doc(db, 'security_logs', cleanLog.id), cleanLog);
   } catch (e) {
-    console.error('Failed to save security log to Firebase:', e);
+    if (!handleQuotaExceeded(e, 'saveSecurityLogToFirebase')) {
+      console.error('Failed to save security log to Firebase:', e);
+    }
   }
 };
 
@@ -759,7 +838,9 @@ export const deleteProjectFromFirebase = async (id: string) => {
     logFirestoreOp('DELETE', 'projects', id);
     await deleteDoc(doc(db, 'projects', id));
   } catch (e) {
-    console.error('Failed to delete project from Firebase:', e);
+    if (!handleQuotaExceeded(e, 'deleteProjectFromFirebase')) {
+      console.error('Failed to delete project from Firebase:', e);
+    }
   }
 };
 
@@ -790,7 +871,9 @@ export const loadSystemSettingsFromFirebase = async (): Promise<SystemSettings |
       return defaultSettings;
     }
   } catch (e) {
-    console.error('Error loading system settings from Firebase:', e);
+    if (!handleQuotaExceeded(e, 'loadSystemSettingsFromFirebase')) {
+      console.error('Error loading system settings from Firebase:', e);
+    }
     return null;
   }
 };
@@ -806,7 +889,9 @@ export const saveSystemSettingsToFirebase = async (settings: SystemSettings) => 
     logFirestoreOp('WRITE', 'system_settings', 'default', cleanSettings);
     await setDoc(doc(db, 'system_settings', 'default'), cleanSettings);
   } catch (e) {
-    console.error('Failed to save system settings to Firebase:', e);
+    if (!handleQuotaExceeded(e, 'saveSystemSettingsToFirebase')) {
+      console.error('Failed to save system settings to Firebase:', e);
+    }
   }
 };
 
@@ -819,7 +904,9 @@ export const loadInquiriesFromFirebase = async (): Promise<Inquiry[] | null> => 
     const inquiries = snapshot.docs.map(d => d.data() as Inquiry);
     return inquiries.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
   } catch (e) {
-    console.error('Error loading inquiries from Firebase:', e);
+    if (!handleQuotaExceeded(e, 'loadInquiriesFromFirebase')) {
+      console.error('Error loading inquiries from Firebase:', e);
+    }
     return null;
   }
 };
@@ -831,7 +918,9 @@ export const saveInquiryToFirebase = async (inquiry: Inquiry) => {
     logFirestoreOp('WRITE', 'inquiries', cleanInquiry.id, { name: cleanInquiry.name, email: cleanInquiry.email });
     await setDoc(doc(db, 'inquiries', cleanInquiry.id), cleanInquiry);
   } catch (e) {
-    console.error('Failed to save inquiry to Firebase:', e);
+    if (!handleQuotaExceeded(e, 'saveInquiryToFirebase')) {
+      console.error('Failed to save inquiry to Firebase:', e);
+    }
   }
 };
 
@@ -841,7 +930,9 @@ export const deleteInquiryFromFirebase = async (id: string) => {
     logFirestoreOp('DELETE', 'inquiries', id);
     await deleteDoc(doc(db, 'inquiries', id));
   } catch (e) {
-    console.error('Failed to delete inquiry from Firebase:', e);
+    if (!handleQuotaExceeded(e, 'deleteInquiryFromFirebase')) {
+      console.error('Failed to delete inquiry from Firebase:', e);
+    }
   }
 };
 
@@ -855,10 +946,14 @@ export const subscribeToInquiriesCollection = (callback: (inquiries: Inquiry[]) 
       const sorted = inquiries.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
       callback(sorted);
     }, (error) => {
-      console.error('Error in inquiries real-time listener:', error);
+      if (!handleQuotaExceeded(error, 'subscribeToInquiriesCollection')) {
+        console.error('Error in inquiries real-time listener:', error);
+      }
     });
   } catch (e) {
-    console.error('Failed to set up inquiries real-time listener:', e);
+    if (!handleQuotaExceeded(e, 'subscribeToInquiriesCollection')) {
+      console.error('Failed to set up inquiries real-time listener:', e);
+    }
     return () => {};
   }
 };

@@ -199,164 +199,51 @@ If you have any questions, contact support at <a href="mailto:fundora.one@gmail.
 </body>
 </html>`;
 
-    // 1. Check Resend API Key FIRST (Highest priority for fast, reliable delivery)
+    // 1. Dispatch strictly via Resend API
     const resendApiKey = (process.env.RESEND_API_KEY || process.env.VITE_RESEND_API_KEY || "").trim();
     let resendFromEmail = (process.env.RESEND_FROM_EMAIL || process.env.VITE_RESEND_FROM_EMAIL || "no-reply@fundora.one").trim();
 
-    // Resend requires verified domains like fundora.one or onboarding@resend.dev. Resend strictly rejects @gmail.com as a 'from' address.
     if (!resendFromEmail || resendFromEmail.toLowerCase().includes("gmail.com") || resendFromEmail.toLowerCase().includes("yahoo.com") || resendFromEmail.toLowerCase().includes("hotmail.com")) {
       resendFromEmail = "no-reply@fundora.one";
     }
 
-    if (isValidResendApiKey(resendApiKey)) {
-      console.log(`[Email Server] Dispatching notification email (${subject}) to ${toEmail} via Resend (from: ${resendFromEmail})...`);
-      try {
-        const response = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${resendApiKey}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            from: `Fundora <${resendFromEmail}>`,
-            to: [toEmail],
-            subject: subject,
-            html: htmlContent
-          })
-        });
-
-        if (response.ok) {
-          const responseData = await response.json();
-          console.log(`[Email Server] Notification email sent successfully to ${toEmail} via Resend:`, responseData);
-          return res.json({ success: true, via: "resend", data: responseData });
-        } else {
-          const errText = await response.text();
-          console.warn(`[Email Server] Resend API error status ${response.status}:`, errText);
-        }
-      } catch (resendErr: any) {
-        console.warn(`[Email Server] Resend API exception:`, resendErr?.message || resendErr);
-      }
+    if (!resendApiKey) {
+      console.warn(`[Email Server] RESEND_API_KEY is missing. Please set RESEND_API_KEY in Vercel / environment variables.`);
+      return res.status(500).json({
+        success: false,
+        error: "RESEND_API_KEY is not configured in Vercel environment variables."
+      });
     }
 
-    // 2. Secondary: Check Gmail / Custom SMTP credentials (Nodemailer) if explicitly configured
-    const smtpUser = (process.env.GMAIL_USER || process.env.SMTP_USER || "").trim();
-    const rawSmtpPass = (process.env.GMAIL_PASS || process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS || "").trim();
-    const smtpPass = rawSmtpPass.includes(" ") ? rawSmtpPass.replace(/\s+/g, "") : rawSmtpPass;
-    const smtpHost = (process.env.SMTP_HOST || "smtp.gmail.com").trim();
-    const smtpPort = parseInt(process.env.SMTP_PORT || "465", 10);
-
-    if (smtpUser && smtpPass) {
-      console.log(`[Email Server] Sending "${subject}" to ${toEmail} via SMTP (${smtpUser})...`);
-      try {
-        const transporter = smtpHost.includes('gmail')
-          ? nodemailer.createTransport({
-              service: 'gmail',
-              auth: {
-                user: smtpUser,
-                pass: smtpPass
-              }
-            })
-          : nodemailer.createTransport({
-              host: smtpHost,
-              port: smtpPort,
-              secure: smtpPort === 465,
-              auth: {
-                user: smtpUser,
-                pass: smtpPass
-              }
-            });
-
-        await transporter.sendMail({
-          from: `"Fundora.one" <${smtpUser}>`,
-          to: toEmail,
+    console.log(`[Email Server] Dispatching email (${subject}) to ${toEmail} via Resend (from: ${resendFromEmail})...`);
+    try {
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${resendApiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          from: `Fundora <${resendFromEmail}>`,
+          to: [toEmail],
           subject: subject,
           html: htmlContent
-        });
+        })
+      });
 
-        console.log(`[Email Server] Successfully sent email "${subject}" to ${toEmail} via SMTP.`);
-        return res.json({ success: true, via: "smtp" });
-      } catch (smtpErr: any) {
-        const errMsg = smtpErr?.message || String(smtpErr);
-        if (errMsg.includes("534") || errMsg.includes("Application-specific password")) {
-          console.warn(`[Email Server] Gmail SMTP Auth Error (534): Google requires a valid 16-character App Password generated from https://myaccount.google.com/apppasswords with 2-Factor Authentication enabled.`);
-        } else {
-          console.warn(`[Email Server] SMTP Delivery failed:`, errMsg);
-        }
+      if (response.ok) {
+        const responseData = await response.json();
+        console.log(`[Email Server] Notification email sent successfully to ${toEmail} via Resend:`, responseData);
+        return res.json({ success: true, via: "resend", data: responseData });
+      } else {
+        const errText = await response.text();
+        console.error(`[Email Server] Resend API error status ${response.status}:`, errText);
+        return res.status(response.status).json({ success: false, error: errText });
       }
+    } catch (resendErr: any) {
+      console.error(`[Email Server] Resend API exception:`, resendErr?.message || resendErr);
+      return res.status(500).json({ success: false, error: resendErr?.message || "Resend email dispatch failed" });
     }
-
-    // 3. Optional Custom Proxy Webhook (if explicitly configured via VITE_SECURE_PROXY_URL)
-    const gasProxyUrl = (process.env.VITE_SECURE_PROXY_URL || "").trim();
-
-    if (gasProxyUrl) {
-      console.log(`[Email Server] Forwarding "${subject}" to Proxy Webhook (${gasProxyUrl}) for ${toEmail}...`);
-      try {
-        const proxyBody: Record<string, any> = {
-          toEmail,
-          recipient: toEmail,
-          to: toEmail,
-          email: toEmail,
-          toName,
-          name: toName,
-          subject,
-          title,
-          badge: badge || 'OFFICIAL NOTIFICATION',
-          badgeColor: badgeColor || '#0d6efd',
-          message,
-          messageHtml: htmlContent,
-          detailsHtml: htmlContent,
-          html: htmlContent,
-          htmlBody: htmlContent,
-          body: htmlContent,
-          content: htmlContent,
-          text: message,
-        };
-
-        const cleanOtpStr = isRealOtp ? String(otpCode).trim() : '';
-
-        if (isRealOtp) {
-          proxyBody.otpCode = cleanOtpStr;
-          proxyBody.code = cleanOtpStr;
-          proxyBody.otp = cleanOtpStr;
-          proxyBody.passcode = cleanOtpStr;
-          proxyBody.pin = cleanOtpStr;
-          proxyBody.verificationCode = cleanOtpStr;
-          proxyBody.verification_code = cleanOtpStr;
-          proxyBody.otp_code = cleanOtpStr;
-        }
-
-        let targetUrl = gasProxyUrl;
-        if (isRealOtp) {
-          const qParams = new URLSearchParams({
-            code: cleanOtpStr,
-            otpCode: cleanOtpStr,
-            otp: cleanOtpStr,
-            toEmail: toEmail,
-            toName: toName || 'Investor'
-          }).toString();
-          targetUrl = targetUrl.includes('?') ? `${targetUrl}&${qParams}` : `${targetUrl}?${qParams}`;
-        }
-
-        const gasRes = await fetch(targetUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify(proxyBody)
-        });
-        if (gasRes.ok || gasRes.status === 200) {
-          console.log(`[Email Server] Successfully delivered "${subject}" to ${toEmail} via Webhook.`);
-          return res.json({ success: true, via: "gas_webhook" });
-        }
-      } catch (gasErr: any) {
-        console.warn("[Email Server] GAS Webhook exception:", gasErr?.message || gasErr);
-      }
-    }
-
-    console.log(`[Email Server] Processed transactional notification for "${subject}" to ${toEmail} (Logged locally).`);
-    return res.json({
-      success: true,
-      simulated: true,
-      message: "Notification logged locally. To receive real emails in inbox for Deposits/Withdrawals, configure GMAIL_USER & GMAIL_PASS or VITE_RESEND_API_KEY in .env."
-    });
   });
 
   // API Route to proxy Resend Email requests (Bypasses browser CORS policy)
@@ -375,39 +262,12 @@ If you have any questions, contact support at <a href="mailto:fundora.one@gmail.
     if (!resendFromEmail || resendFromEmail.toLowerCase().includes("gmail.com") || resendFromEmail.toLowerCase().includes("yahoo.com") || resendFromEmail.toLowerCase().includes("hotmail.com")) {
       resendFromEmail = "no-reply@fundora.one";
     }
-    const gasProxyUrl = process.env.VITE_SECURE_PROXY_URL || "https://script.google.com/macros/s/AKfycbwHF82vYH4JVV0ANbHvi2TSnbw6O8pp3jIT75EYKOxYhezBKk1DDvAb7Ve4EU14t46S9g/exec";
 
-    if (!isValidResendApiKey(resendApiKey)) {
-      console.log(`[Email Proxy Server] Forwarding OTP to Google Apps Script Proxy Webhook for ${toEmail}...`);
-      try {
-        const gasRes = await fetch(gasProxyUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({
-            toEmail,
-            recipient: toEmail,
-            to: toEmail,
-            toName,
-            subject: "Fundora.one - Verification Code",
-            title: "Verification Code",
-            badge: "OTP CODE",
-            badgeColor: "#0d6efd",
-            message: `Your verification code is ${otpCode}. It will expire in 10 minutes.`,
-            otpCode,
-            code: otpCode
-          })
-        });
-        if (gasRes.ok || gasRes.status === 200) {
-          console.log(`[Email Proxy Server] Successfully delivered OTP to ${toEmail} via GAS Webhook.`);
-          return res.json({ success: true, via: "google_apps_script" });
-        }
-      } catch (e: any) {
-        console.warn("[Email Proxy Server] GAS OTP proxy exception:", e?.message || e);
-      }
-      return res.json({
-        success: true,
-        simulated: true,
-        message: "OTP logged."
+    if (!resendApiKey) {
+      console.warn(`[Email Proxy Server] RESEND_API_KEY is not configured in Vercel environment variables.`);
+      return res.status(500).json({
+        success: false,
+        error: "RESEND_API_KEY is not configured in Vercel environment variables."
       });
     }
 
