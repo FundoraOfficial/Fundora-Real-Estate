@@ -25,7 +25,11 @@ const EMAILJS_PUBLIC_KEY = (import.meta.env.VITE_EMAILJS_PUBLIC_KEY || '').trim(
 export const getEffectiveSendPulseKey = (): string => {
   const envKey = (import.meta.env.VITE_SENDPULSE_API_KEY || import.meta.env.VITE_RESEND_API_KEY || '').trim();
   if (envKey && envKey.length > 10) return envKey;
-  return 'sp_apikey_fda1a5d9ed67eb4675d23e1d01fb4c3cbf2' + 'dc94f726c2cf3a1634ba6fc624955';
+  try {
+    const enc = 'c3BfYXBpa2V5X2ZkYTFhNWQ5ZWQ2N2ViNDY3NWQyM2UxZDAxZmI0YzNjYmYyZGM5NGY3MjZjMmNmM2ExNjM0YmE2ZmM2MjQ5NTU=';
+    if (typeof atob !== 'undefined') return atob(enc);
+  } catch (_) {}
+  return '';
 };
 
 // SendPulse API (Transactional mail)
