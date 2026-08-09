@@ -161,8 +161,8 @@ export default function App() {
     const cleanList = list
       .map(u => {
         if (!u) return u;
-        if (u.id === 'user-admin' && (u.email === 'admin@fundora.one' || u.email === 'no-reply@fundora.one')) {
-          return { ...u, email: 'fundora.one@gmail.com' };
+        if (u.id === 'user-admin') {
+          return { ...u, email: 'admin@fundora.one' };
         }
         return u;
       })
@@ -182,8 +182,8 @@ export default function App() {
     if (!saved) return null;
     try {
       const parsed = JSON.parse(saved);
-      if (parsed && parsed.id === 'user-admin' && (parsed.email === 'admin@fundora.one' || parsed.email === 'no-reply@fundora.one')) {
-        return { ...parsed, email: 'fundora.one@gmail.com' };
+      if (parsed && parsed.id === 'user-admin') {
+        return { ...parsed, email: 'admin@fundora.one' };
       }
       return parsed;
     } catch (_) {

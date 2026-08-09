@@ -31,28 +31,18 @@ const isValidResendKey = (key: string): boolean => {
 // Resend API (Completely free, branding-free, custom-domain transactional mail)
 const RESEND_API_KEY = (import.meta.env.VITE_RESEND_API_KEY || '').trim();
 const RESEND_FROM_EMAIL = (import.meta.env.VITE_RESEND_FROM_EMAIL || 'no-reply@fundora.one').trim();
-const EMAIL_SERVICE_ACTIVE = (import.meta.env.VITE_EMAIL_SERVICE_ACTIVE || '').trim().toLowerCase() === 'true';
-
-// Secure Custom Proxy (Optional custom proxy webhook if configured via environment variable)
-const VITE_SECURE_PROXY_URL = (import.meta.env.VITE_SECURE_PROXY_URL || '').trim();
 
 /**
- * Checks if any email service (EmailJS, Resend, or Secure Proxy) is properly configured
+ * Checks if email service is properly configured
  */
 export const isEmailServiceConfigured = (): boolean => {
   return true;
 };
 
 /**
- * Returns which service is currently active
+ * Returns active email service ('resend' or 'server')
  */
 export const getActiveEmailService = (): 'resend' | 'emailjs' | 'proxy' | 'server' => {
-  if (VITE_SECURE_PROXY_URL) {
-    return 'proxy';
-  }
-  if (EMAILJS_SERVICE_ID && EMAILJS_TEMPLATE_ID && EMAILJS_PUBLIC_KEY) {
-    return 'emailjs';
-  }
   if (RESEND_API_KEY) {
     return 'resend';
   }
@@ -61,7 +51,7 @@ export const getActiveEmailService = (): 'resend' | 'emailjs' | 'proxy' | 'serve
 
 /**
  * Sends a real OTP verification code to the registered investor.
- * Uses the server-side Resend API proxy by default, falling back to direct client-side delivery or EmailJS if configured.
+ * Uses the server-side Resend API proxy strictly.
  */
 export const sendOtpEmail = async (params: EmailParams): Promise<{ success: boolean; error?: string }> => {
   const { toEmail, toName, otpCode } = params;
@@ -90,7 +80,8 @@ export interface TransactionalEmailParams {
 }
 
 /**
- * Universal transactional email sender across Google Apps Script Proxy, Express Backend, Resend, and EmailJS
+ * Universal transactional email sender across Vercel Resend API Serverless Proxy and Direct Resend API.
+ * Gmail, Google Apps Script Proxy, and all legacy email fallbacks have been permanently revoked.
  */
 export const sendTransactionalEmail = async (params: TransactionalEmailParams): Promise<{ success: boolean; error?: string }> => {
   const { toEmail, toName, subject, title, badge, badgeColor, message, detailsHtml, otpCode } = params;
@@ -111,9 +102,8 @@ export const sendTransactionalEmail = async (params: TransactionalEmailParams): 
   const formattedMessageHtml = message ? message.replace(/\n/g, '<br>') : '';
 
   const isFullHtmlDocument = detailsHtml && (detailsHtml.includes('<!DOCTYPE') || detailsHtml.includes('<html'));
-  const payloadHtml = isFullHtmlDocument ? detailsHtml : formattedMessageHtml;
 
-  // 1. Primary Choice: Express Backend API (/api/send-email) - Sends via Nodemailer SMTP or Resend with full HTML
+  // 1. Primary Choice: Express / Vercel Serverless API (/api/send-email) - Dispatches strictly via Resend API
   try {
     const response = await fetchWithFallback('/api/send-email', {
       method: 'POST',
@@ -134,78 +124,17 @@ export const sendTransactionalEmail = async (params: TransactionalEmailParams): 
     if (response.ok) {
       const resData = await response.json().catch(() => ({}));
       if (resData.success) {
-        console.log(`Successfully sent email "${subject}" to ${toEmail} via Express Backend API (${resData.via || 'server'})`);
+        console.log(`[Email Service] Successfully dispatched OTP email "${subject}" to ${toEmail} via Resend API`);
         return { success: true };
+      } else if (resData.error) {
+        console.warn(`[Email Service] /api/send-email error: ${resData.error}`);
       }
     }
   } catch (err) {
-    console.warn('[Email Service] Express API /api/send-email unreachable or failed, trying fallback:', err);
+    console.warn('[Email Service] /api/send-email endpoint error:', err);
   }
 
-  // 2. Secondary Choice: Optional Custom Proxy Webhook (if explicitly configured via VITE_SECURE_PROXY_URL)
-  if (VITE_SECURE_PROXY_URL) {
-    console.log(`[Email Service] Dispatching "${subject}" to ${toEmail} via Custom Proxy...`);
-    try {
-      const proxyPayload: Record<string, any> = {
-        toEmail,
-        recipient: toEmail,
-        to: toEmail,
-        email: toEmail,
-        toName,
-        name: toName,
-        subject,
-        title,
-        badge: badge || 'OFFICIAL NOTIFICATION',
-        badgeColor: badgeColor || '#0d6efd',
-        message,
-        messageHtml: payloadHtml,
-        detailsHtml: payloadHtml,
-        html: payloadHtml,
-        htmlBody: payloadHtml,
-        body: payloadHtml || message,
-        content: payloadHtml,
-        text: message,
-      };
-
-      if (isRealOtp) {
-        proxyPayload.otpCode = cleanOtp;
-        proxyPayload.code = cleanOtp;
-        proxyPayload.otp = cleanOtp;
-        proxyPayload.passcode = cleanOtp;
-        proxyPayload.pin = cleanOtp;
-        proxyPayload.verificationCode = cleanOtp;
-        proxyPayload.verification_code = cleanOtp;
-        proxyPayload.otp_code = cleanOtp;
-      }
-
-      let targetGasUrl = VITE_SECURE_PROXY_URL;
-      if (isRealOtp) {
-        const queryParams = new URLSearchParams({
-          code: cleanOtp,
-          otpCode: cleanOtp,
-          otp: cleanOtp,
-          toEmail: toEmail,
-          toName: toName || 'Investor'
-        }).toString();
-        targetGasUrl = targetGasUrl.includes('?') ? `${targetGasUrl}&${queryParams}` : `${targetGasUrl}?${queryParams}`;
-      }
-
-      const response = await fetch(targetGasUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(proxyPayload),
-      });
-
-      if (response.ok || response.status === 200) {
-        console.log(`Successfully dispatched email "${subject}" to ${toEmail} via Proxy Webhook`);
-        return { success: true };
-      }
-    } catch (err: any) {
-      console.warn('[Email Service] Secure Proxy exception, trying fallback:', err);
-    }
-  }
-
-  // 3. Third choice: Resend API Direct Client Call (if valid client key configured)
+  // 2. Secondary Choice: Direct Client-Side Resend API call if VITE_RESEND_API_KEY is configured
   if (isValidResendKey(RESEND_API_KEY)) {
     try {
       const htmlContent = isFullHtmlDocument ? detailsHtml : `<!DOCTYPE html>
@@ -224,7 +153,7 @@ export const sendTransactionalEmail = async (params: TransactionalEmailParams): 
 <tr>
 <td style="padding:32px;">
 <div style="display:inline-block;background:${badgeColor || '#0d6efd'}22;color:${badgeColor || '#0d6efd'};border:1px solid ${badgeColor || '#0d6efd'}55;padding:4px 12px;font-size:10px;font-weight:bold;letter-spacing:1.5px;border-radius:20px;text-transform:uppercase;margin-bottom:16px;">
-${badge || 'OFFICIAL NOTIFICATION'}
+${badge || 'SECURITY VERIFICATION'}
 </div>
 <h2 style="margin-top:0;margin-bottom:16px;color:#f8fafc;font-size:20px;font-weight:700;">${title}</h2>
 <p style="font-size:15px;color:#cbd5e1;line-height:24px;margin-bottom:16px;">Hello ${toName || 'Investor'},</p>
@@ -263,7 +192,7 @@ ${cleanOtp ? `<div style="margin:24px 0;text-align:center;"><div style="display:
     }
   }
 
-  return { success: false, error: 'Could not dispatch notification email.' };
+  return { success: false, error: 'Could not dispatch OTP email via Resend API.' };
 };
 
 /**
