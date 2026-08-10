@@ -143,6 +143,59 @@ export const calibrateInvestmentsList = (invs: InvestmentRecord[]): { calibrated
   return { calibrated, hasChanges };
 };
 
+const sanitizeClaimsList = (claimsList: ProfitClaimRecord[], txsList: Transaction[]): ProfitClaimRecord[] => {
+  const claimedKeys = new Set<string>();
+  claimsList.forEach(c => {
+    if (c.status === 'Claimed') {
+      const email = c.userEmail?.toLowerCase().trim();
+      if (email) {
+        if (c.slot) claimedKeys.add(`${email}_${c.date}_${c.slot}`);
+        claimedKeys.add(`${email}_${c.date}`);
+      }
+      if (c.userId) {
+        if (c.slot) claimedKeys.add(`${c.userId}_${c.date}_${c.slot}`);
+        claimedKeys.add(`${c.userId}_${c.date}`);
+      }
+    }
+  });
+
+  txsList.forEach(t => {
+    if (t.type === 'Profit Claim' && t.status === 'Completed') {
+      const email = t.userEmail?.toLowerCase().trim();
+      const dateStr = t.date.slice(0, 10);
+      let slot = 16;
+      if (t.description?.includes('09:00 PM')) slot = 21;
+      if (t.description?.includes('04:00 PM')) slot = 16;
+      if (email) {
+        claimedKeys.add(`${email}_${dateStr}_${slot}`);
+        claimedKeys.add(`${email}_${dateStr}`);
+      }
+      if (t.userId) {
+        claimedKeys.add(`${t.userId}_${dateStr}_${slot}`);
+        claimedKeys.add(`${t.userId}_${dateStr}`);
+      }
+    }
+  });
+
+  const seenKeys = new Set<string>();
+  return claimsList.filter(c => {
+    const email = c.userEmail?.toLowerCase().trim();
+    const keyWithSlot = email ? `${email}_${c.date}_${c.slot}` : (c.userId ? `${c.userId}_${c.date}_${c.slot}` : '');
+    const keyDateOnly = email ? `${email}_${c.date}` : (c.userId ? `${c.userId}_${c.date}` : '');
+
+    if (c.status === 'Missed' || c.status === 'Expired') {
+      if ((keyWithSlot && claimedKeys.has(keyWithSlot)) || (keyDateOnly && claimedKeys.has(keyDateOnly))) {
+        return false;
+      }
+    }
+
+    const dupKey = `${email || c.userId}_${c.date}_${c.slot || 16}_${c.status}`;
+    if (seenKeys.has(dupKey)) return false;
+    seenKeys.add(dupKey);
+    return true;
+  });
+};
+
 export default function App() {
   const [showSplash, setShowSplash] = useState<boolean>(true);
   const [isFirebaseSynced, setIsFirebaseSynced] = useState<boolean>(false);
@@ -726,9 +779,13 @@ export default function App() {
           safeSetLocalStorage('inv_users', JSON.stringify(cleanUsers));
         }
 
+        const freshTxs = transactions !== null ? transactions : transactionsList;
         if (transactions !== null) setTransactionsList(transactions);
         if (investments !== null) setInvestmentsList(investments);
-        if (claims !== null) setClaimsHistory(claims);
+        if (claims !== null) {
+          const sanitized = sanitizeClaimsList(claims, freshTxs);
+          setClaimsHistory(sanitized);
+        }
         if (logs !== null) setSecurityLogsList(logs);
         if (settings !== null) setSystemSettings(settings);
         if (inquiries !== null) setInquiriesList(inquiries);
@@ -942,6 +999,12 @@ export default function App() {
               c.date === todayStr &&
               c.status === 'Claimed' &&
               c.slot === 16
+            ) || transactionsList.some(t =>
+              (t.userId === user.id || t.userEmail?.toLowerCase() === user.email.toLowerCase()) &&
+              t.type === 'Profit Claim' &&
+              t.status === 'Completed' &&
+              t.date.startsWith(todayStr) &&
+              (t.description?.includes('04:00 PM') || !t.description?.includes('09:00 PM'))
             );
             const alreadyRecorded = claimsHistory.some(c =>
               (c.userId === user.id || c.userEmail?.toLowerCase() === user.email.toLowerCase()) &&
@@ -969,6 +1032,12 @@ export default function App() {
               c.date === todayStr &&
               c.status === 'Claimed' &&
               c.slot === 21
+            ) || transactionsList.some(t =>
+              (t.userId === user.id || t.userEmail?.toLowerCase() === user.email.toLowerCase()) &&
+              t.type === 'Profit Claim' &&
+              t.status === 'Completed' &&
+              t.date.startsWith(todayStr) &&
+              (t.description?.includes('09:00 PM') || !t.description?.includes('04:00 PM'))
             );
             const alreadyRecorded = claimsHistory.some(c =>
               (c.userId === user.id || c.userEmail?.toLowerCase() === user.email.toLowerCase()) &&
@@ -2065,13 +2134,27 @@ export default function App() {
       slot: currentSlot
     };
 
+    // Check for any superseded Missed or Expired claims for today and delete them
+    const supersededClaims = claimsHistory.filter(c =>
+      (c.userId === activeUser.id || c.userEmail?.toLowerCase() === activeUser.email.toLowerCase()) &&
+      c.date === todayStr &&
+      (c.slot === currentSlot || !c.slot) &&
+      (c.status === 'Missed' || c.status === 'Expired')
+    );
+    if (supersededClaims.length > 0) {
+      supersededClaims.forEach(sc => deleteClaimFromFirebase(sc.id));
+    }
+
     setActiveUser(updatedUser);
     saveAndSyncUser(updatedUser);
 
     setTransactionsList(prev => [claimTx, ...prev]);
     saveTransactionToFirebase(claimTx);
 
-    setClaimsHistory(prev => [newClaimRecord, ...prev]);
+    setClaimsHistory(prev => [
+      newClaimRecord,
+      ...prev.filter(c => !supersededClaims.some(sc => sc.id === c.id))
+    ]);
     saveClaimToFirebase(newClaimRecord);
 
     addSystemLog('Large_Withdrawal', `Daily profit payout of $${slotProfitAmount} claims validated successfully at ${currentHour}:${currentMinute} in ${currentSlot === 16 ? '04:00 PM' : '09:00 PM'} slot.`, 'Secure');
@@ -2173,6 +2256,12 @@ export default function App() {
             c.date === yesterdayStr && 
             c.status === 'Claimed' &&
             c.slot === slot
+          ) || transactionsList.some(t =>
+            (t.userId === user.id || t.userEmail?.toLowerCase() === user.email.toLowerCase()) &&
+            t.type === 'Profit Claim' &&
+            t.status === 'Completed' &&
+            t.date.startsWith(yesterdayStr) &&
+            (slot === 16 ? (t.description?.includes('04:00 PM') || !t.description?.includes('09:00 PM')) : (t.description?.includes('09:00 PM') || !t.description?.includes('04:00 PM')))
           );
           const alreadyRecorded = claimsHistory.some(c => 
             (c.userId === user.id || c.userEmail?.toLowerCase() === user.email.toLowerCase()) &&

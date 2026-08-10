@@ -349,9 +349,39 @@ export default function UserDashboard({
       isClaim: false
     }));
 
-    // 2. Map missed or expired claims from claimsHistory as 'Missed Claim'
+    // 2. Map missed or expired claims from claimsHistory as 'Missed Claim' (filtering out superseded/claimed ones)
+    const claimedDatesAndSlots = new Set<string>();
+    claimsHistory.forEach(ch => {
+      if (ch.status === 'Claimed') {
+        if (ch.slot) claimedDatesAndSlots.add(`${ch.date}_${ch.slot}`);
+        claimedDatesAndSlots.add(ch.date);
+      }
+    });
+    transactions.forEach(tx => {
+      if (tx.type === 'Profit Claim' && tx.status === 'Completed') {
+        const txDate = tx.date.slice(0, 10);
+        let slot = 16;
+        if (tx.description?.includes('09:00 PM')) slot = 21;
+        if (tx.description?.includes('04:00 PM')) slot = 16;
+        claimedDatesAndSlots.add(`${txDate}_${slot}`);
+        claimedDatesAndSlots.add(txDate);
+      }
+    });
+
+    const seenMissedKeys = new Set<string>();
     const missedClaimsItems = claimsHistory
-      .filter(c => c.status === 'Missed' || c.status === 'Expired')
+      .filter(c => {
+        if (c.status !== 'Missed' && c.status !== 'Expired') return false;
+        const keyWithSlot = `${c.date}_${c.slot}`;
+        const keyDateOnly = c.date;
+        if (claimedDatesAndSlots.has(keyWithSlot) || claimedDatesAndSlots.has(keyDateOnly)) {
+          return false;
+        }
+        const dupKey = `${c.date}_${c.slot || 16}_${c.status}`;
+        if (seenMissedKeys.has(dupKey)) return false;
+        seenMissedKeys.add(dupKey);
+        return true;
+      })
       .map(c => ({
         id: c.id,
         type: 'Missed Claim' as const,
@@ -909,24 +939,56 @@ export default function UserDashboard({
     return activeUser.totalInvestment > 0 || (investments && investments.some(inv => inv.userId === activeUser.id));
   }, [activeUser.totalInvestment, investments, activeUser.id]);
 
-  // 7. Missed Claims
+  // 7. Missed Claims (filtering out superseded ones)
+  const filteredMissedClaims = useMemo(() => {
+    const claimedDatesAndSlots = new Set<string>();
+    claimsHistory.forEach(ch => {
+      if (ch.status === 'Claimed') {
+        if (ch.slot) claimedDatesAndSlots.add(`${ch.date}_${ch.slot}`);
+        claimedDatesAndSlots.add(ch.date);
+      }
+    });
+    transactions.forEach(tx => {
+      if (tx.type === 'Profit Claim' && tx.status === 'Completed') {
+        const txDate = tx.date.slice(0, 10);
+        let slot = 16;
+        if (tx.description?.includes('09:00 PM')) slot = 21;
+        if (tx.description?.includes('04:00 PM')) slot = 16;
+        claimedDatesAndSlots.add(`${txDate}_${slot}`);
+        claimedDatesAndSlots.add(txDate);
+      }
+    });
+
+    const seenMissedKeys = new Set<string>();
+    return claimsHistory.filter(c => {
+      if (c.status !== 'Missed' && c.status !== 'Expired') return false;
+      const keyWithSlot = `${c.date}_${c.slot}`;
+      const keyDateOnly = c.date;
+      if (claimedDatesAndSlots.has(keyWithSlot) || claimedDatesAndSlots.has(keyDateOnly)) {
+        return false;
+      }
+      const dupKey = `${c.date}_${c.slot || 16}_${c.status}`;
+      if (seenMissedKeys.has(dupKey)) return false;
+      seenMissedKeys.add(dupKey);
+      return true;
+    });
+  }, [claimsHistory, transactions]);
+
   const missedClaimsCount = useMemo(() => {
-    return claimsHistory.filter(c => c.status === 'Missed' || c.status === 'Expired').length;
-  }, [claimsHistory]);
+    return filteredMissedClaims.length;
+  }, [filteredMissedClaims]);
 
   const missedClaimsTotalAmount = useMemo(() => {
-    return claimsHistory
-      .filter(c => c.status === 'Missed' || c.status === 'Expired')
-      .reduce((sum, c) => sum + c.amount, 0);
-  }, [claimsHistory]);
+    return filteredMissedClaims.reduce((sum, c) => sum + c.amount, 0);
+  }, [filteredMissedClaims]);
 
   const successfulClaims = useMemo(() => {
     return claimsHistory.filter(c => c.status === 'Claimed');
   }, [claimsHistory]);
 
   const missedClaims = useMemo(() => {
-    return claimsHistory.filter(c => c.status === 'Missed' || c.status === 'Expired');
-  }, [claimsHistory]);
+    return filteredMissedClaims;
+  }, [filteredMissedClaims]);
 
   // 8. Active Projects count
   const activeProjectsCount = useMemo(() => {
