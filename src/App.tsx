@@ -86,6 +86,63 @@ const safeSetLocalStorage = (key: string, value: string) => {
   }
 };
 
+// Helper to calibrate investment records and fix prematurely matured investments
+export const calibrateInvestmentsList = (invs: InvestmentRecord[]): { calibrated: InvestmentRecord[], hasChanges: boolean } => {
+  let hasChanges = false;
+
+  const calibrated = invs.map(inv => {
+    // Keep Liquidated investments untouched
+    if (inv.status === 'Liquidated') return inv;
+
+    const durationMonths = inv.durationMonths || 2;
+    const totalDays = durationMonths * 30;
+
+    let purchaseMs = Date.now();
+    let purchaseDateStr = inv.purchaseDate;
+    if (!purchaseDateStr) {
+      purchaseDateStr = new Date().toISOString().slice(0, 10);
+      hasChanges = true;
+    } else {
+      const pTime = new Date(purchaseDateStr).getTime();
+      if (!isNaN(pTime)) purchaseMs = pTime;
+    }
+
+    const elapsedMs = Math.max(0, Date.now() - purchaseMs);
+    const elapsedDays = Math.floor(elapsedMs / 86400000);
+    const remainingDays = Math.max(0, totalDays - elapsedDays);
+    const correctRemainingMonths = Math.max(0, Math.ceil(remainingDays / 30));
+    const isActuallyMatured = elapsedDays >= totalDays;
+
+    if (!isActuallyMatured) {
+      if (inv.status !== 'Active' || inv.remainingMonths !== correctRemainingMonths || inv.purchaseDate !== purchaseDateStr) {
+        hasChanges = true;
+        return {
+          ...inv,
+          purchaseDate: purchaseDateStr,
+          durationMonths,
+          remainingMonths: correctRemainingMonths,
+          status: 'Active' as const
+        };
+      }
+    } else {
+      if (inv.status !== 'Completed' || inv.remainingMonths !== 0) {
+        hasChanges = true;
+        return {
+          ...inv,
+          purchaseDate: purchaseDateStr,
+          durationMonths,
+          remainingMonths: 0,
+          status: 'Completed' as const
+        };
+      }
+    }
+
+    return inv;
+  });
+
+  return { calibrated, hasChanges };
+};
+
 export default function App() {
   const [showSplash, setShowSplash] = useState<boolean>(true);
   const [isFirebaseSynced, setIsFirebaseSynced] = useState<boolean>(false);
@@ -374,7 +431,9 @@ export default function App() {
         status: 'Active'
       }
     ];
-    return saved ? JSON.parse(saved) : defaultRecord;
+    const initialRaw = saved ? JSON.parse(saved) : defaultRecord;
+    const { calibrated } = calibrateInvestmentsList(initialRaw);
+    return calibrated;
   });
 
   const [claimsHistory, setClaimsHistory] = useState<ProfitClaimRecord[]>(() => {
@@ -541,6 +600,18 @@ export default function App() {
 
   useEffect(() => {
     safeSetLocalStorage('inv_investments', JSON.stringify(investmentsList));
+  }, [investmentsList]);
+
+  // Auto-recalibrate investments if any premature maturity or duration miscalculation is detected
+  useEffect(() => {
+    if (!investmentsList || investmentsList.length === 0) return;
+    const { calibrated, hasChanges } = calibrateInvestmentsList(investmentsList);
+    if (hasChanges) {
+      console.log("⚡ Auto-recalibrating investment records to restore active status...");
+      setInvestmentsList(calibrated);
+      safeSetLocalStorage('inv_investments', JSON.stringify(calibrated));
+      calibrated.forEach(inv => saveInvestmentToFirebase(inv));
+    }
   }, [investmentsList]);
 
   useEffect(() => {
@@ -2130,7 +2201,7 @@ export default function App() {
       newMissedRecords.forEach(claim => saveClaimToFirebase(claim));
     }
 
-    // 3. Decrement plan durations (remainingMonths) for active investments, handling maturities
+    // 3. Recalculate remainingMonths and check for actual maturity based on elapsed calendar days since purchaseDate
     let totalMaturedPrincipal = 0;
     const maturedRefundTransactions: Transaction[] = [];
     const refundsByUserEmail: Record<string, number> = {};
@@ -2138,9 +2209,19 @@ export default function App() {
     const updatedInvestments = investmentsList.map(inv => {
       const isActive = inv.status === 'Active' || inv.status === undefined;
       if (isActive) {
-        const currentRemaining = inv.remainingMonths !== undefined ? inv.remainingMonths : (inv.durationMonths || 12);
-        const newRemaining = Math.max(0, currentRemaining - 1);
-        if (newRemaining === 0) {
+        const durationMonths = inv.durationMonths || 2;
+        const totalDays = durationMonths * 30;
+        let purchaseMs = Date.now();
+        if (inv.purchaseDate) {
+          const pTime = new Date(inv.purchaseDate).getTime();
+          if (!isNaN(pTime)) purchaseMs = pTime;
+        }
+        const elapsedDays = Math.floor((Date.now() - purchaseMs) / 86400000);
+        const remainingDays = Math.max(0, totalDays - elapsedDays);
+        const correctRemainingMonths = Math.max(0, Math.ceil(remainingDays / 30));
+        const isActuallyMatured = elapsedDays >= totalDays;
+
+        if (isActuallyMatured) {
           // Investment matured! Refund full principal cost
           totalMaturedPrincipal += inv.totalCost;
           const emailClean = (inv.userEmail || '').toLowerCase();
@@ -2165,7 +2246,7 @@ export default function App() {
         }
         return {
           ...inv,
-          remainingMonths: newRemaining,
+          remainingMonths: correctRemainingMonths,
           status: 'Active' as const
         };
       }

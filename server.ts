@@ -130,6 +130,12 @@ const isValidResendApiKey = (key: string): boolean => {
   app.get("/download/app-fundora.apk", handleApkDownload);
   app.get("/app-fundora.apk", handleApkDownload);
 
+  const getSpFallbackKey = () => {
+    try {
+      return Buffer.from("c3BfYXBpa2V5X2ZkYTFhNWQ5ZWQ2N2ViNDY3NWQyM2UxZDAxZmI0YzNjYmYyZGM5NGY3MjZjMmNmM2ExNjM0YmE2ZmM2MjQ5NTU=", "base64").toString("utf-8");
+    } catch (_) { return ""; }
+  };
+
   // API Route to proxy email requests for generic transactional emails & OTPs
   app.post("/api/send-email", async (req, res) => {
     const { toEmail, toName, subject, title, message, badge, badgeColor, detailsHtml, otpCode } = req.body;
@@ -206,12 +212,6 @@ If you have any questions, contact support at <a href="mailto:fundora.one@gmail.
       req.body?.apiKey ||
       ""
     ).trim();
-    const getSpFallbackKey = () => {
-      try {
-        const enc = "c3BfYXBpa2V5X2ZkYTFhNWQ5ZWQ2N2ViNDY3NWQyM2UxZDAxZmI0YzNjYmYyZGM5NGY3MjZjMmNmM2ExNjM4YmE2ZmM2MjQ5NTU=";
-        return Buffer.from("c3BfYXBpa2V5X2ZkYTFhNWQ5ZWQ2N2ViNDY3NWQyM2UxZDAxZmI0YzNjYmYyZGM5NGY3MjZjMmNmM2ExNjM0YmE2ZmM2MjQ5NTU=", "base64").toString("utf-8");
-      } catch (_) { return ""; }
-    };
     const sendpulseApiKey = rawKey.startsWith("sp_apikey_")
       ? rawKey
       : getSpFallbackKey();
