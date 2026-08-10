@@ -876,12 +876,16 @@ export default function UserDashboard({
     }, 0);
   }, [investments]);
 
-  // 3. Total Profit Earned (claims history count)
+  // 3. Total Profit Earned
   const totalProfitEarnedAmount = useMemo(() => {
-    return claimsHistory
+    const claimsSum = claimsHistory
       .filter(c => c.status === 'Claimed')
-      .reduce((sum, c) => sum + c.amount, 0) + activeUser.totalProfitEarned;
-  }, [claimsHistory, activeUser.totalProfitEarned]);
+      .reduce((sum, c) => sum + c.amount, 0);
+    const txClaimsSum = transactions
+      .filter(t => t.type === 'Profit Claim' && t.status === 'Completed')
+      .reduce((sum, t) => sum + t.amount, 0);
+    return Math.max(activeUser.totalProfitEarned || 0, claimsSum, txClaimsSum);
+  }, [claimsHistory, transactions, activeUser.totalProfitEarned]);
 
   // 4. Total Deposits
   const totalDepositsSum = useMemo(() => {
