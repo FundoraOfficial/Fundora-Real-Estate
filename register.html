@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Fundora - Redirecting...</title>
+  <script>
+    (function() {
+      // Get the full query string (e.g., ?ref=INV-5656)
+      const search = window.location.search || '';
+      
+      // We want to redirect to /#/register?ref=INV-5656
+      // Let's parse query parameters safely
+      const params = new URLSearchParams(search);
+      const ref = params.get('ref') || '';
+      
+      const targetHash = ref ? '#/register?ref=' + encodeURIComponent(ref) : '#/register';
+      
+      // Construct final URL
+      const finalUrl = window.location.protocol + '//' + window.location.host + '/' + targetHash;
+      
+      console.log('Redirecting to:', finalUrl);
+      window.location.replace(finalUrl);
+    })();
+  </script>
+</head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background-color:#0f172a;color:#f8fafc;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;padding:20px;box-sizing:border-box;text-align:center;">
+  <div style="max-width:400px;padding:30px;background-color:#1e293b;border-radius:16px;box-shadow:0 10px 25px -5px rgba(0,0,0,0.3);border:1px solid #334155;">
+    <div style="width:48px;height:48px;border:4px solid #10b981;border-top-color:transparent;border-radius:50%;margin:0 auto 20px auto;animation:spin 1s linear infinite;"></div>
+    <h2 style="font-size:20px;margin:0 0 10px 0;font-weight:700;">Redirecting to Fundora</h2>
+    <p style="font-size:14px;color:#94a3b8;margin:0 0 20px 0;line-height:1.5;">We are setting up your secure referral connection. If you are not redirected in a few seconds, click the button below:</p>
+    <a id="fallback-btn" href="/#/register" style="display:inline-block;background-color:#10b981;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:8px;transition:background-color 0.2s;">Continue to Registration</a>
+  </div>
+  
+  <style>
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+
+  <script>
+    (function() {
+      const search = window.location.search || '';
+      const params = new URLSearchParams(search);
+      const ref = params.get('ref') || '';
+      const btn = document.getElementById('fallback-btn');
+      if (btn) {
+        btn.href = ref ? '/#/register?ref=' + encodeURIComponent(ref) : '/#/register';
+      }
+    })();
+  </script>
+</body>
+</html>
