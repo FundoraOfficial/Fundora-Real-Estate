@@ -194,7 +194,7 @@ ${cleanOtp ? `<div style="margin:24px 0;text-align:center;"><div style="display:
 <hr style="border:none;border-top:1px solid #1e293b;margin:24px 0;">
 <p style="font-size:12px;color:#64748b;text-align:center;line-height:18px;">
 This is an automated notification from <strong>Fundora.one</strong>.<br>
-If you have any questions, contact support at <a href="mailto:fundora.one@gmail.com" style="color:#38bdf8;text-decoration:none;">fundora.one@gmail.com</a>
+If you have any questions, contact support at <a href="mailto:admin@fundora.one" style="color:#38bdf8;text-decoration:none;">admin@fundora.one</a>
 </p>
 <p style="font-size:12px;color:#64748b;text-align:center;">© 2026 Fundora.one. All rights reserved.</p>
 </td>
@@ -483,7 +483,7 @@ export const generateDepositReceivedEmailHtml = (data?: Partial<DepositEmailData
                       <tr>
                         <td width="24" valign="top" style="font-size: 16px; padding-top: 2px;">🔒</td>
                         <td style="padding-left: 10px; font-size: 13px; line-height: 20px; color: #9f1239;">
-                          <strong>Security Notice:</strong> If you did not make this deposit request, please contact <a href="mailto:fundora.one@gmail.com" style="color: #be123c; font-weight: 700; text-decoration: underline;">Fundora Support</a> immediately.
+                          <strong>Security Notice:</strong> If you did not make this deposit request, please contact <a href="mailto:admin@fundora.one" style="color: #be123c; font-weight: 700; text-decoration: underline;">Fundora Support</a> immediately.
                         </td>
                       </tr>
                     </table>
@@ -501,7 +501,7 @@ export const generateDepositReceivedEmailHtml = (data?: Partial<DepositEmailData
                 Fundora.one &bull; Real Estate Fractional Investments
               </p>
               <p style="margin: 0 0 8px 0; font-size: 12px; color: #94a3b8; line-height: 18px;">
-                Need assistance? Reach us anytime at <a href="mailto:fundora.one@gmail.com" style="color: #0284c7; text-decoration: none; font-weight: 600;">fundora.one@gmail.com</a>
+                Need assistance? Reach us anytime at <a href="mailto:admin@fundora.one" style="color: #0284c7; text-decoration: none; font-weight: 600;">admin@fundora.one</a>
               </p>
               <p style="margin: 0 0 8px 0; font-size: 12px; color: #94a3b8;">
                 &copy; ${currentYear} Fundora. All Rights Reserved.
@@ -622,7 +622,7 @@ export const sendDepositEmail = async (
       </table>
       <div style="margin-top:16px;padding-top:12px;border-top:1px solid #1e293b;font-size:12px;color:#94a3b8;line-height:18px;">
         <strong style="color:#38bdf8;display:block;margin-bottom:4px;">🔒 Security Support:</strong>
-        Contact our 24/7 support team at <a href="mailto:fundora.one@gmail.com" style="color:#38bdf8;text-decoration:none;">fundora.one@gmail.com</a> with any questions.
+        Contact our 24/7 support team at <a href="mailto:admin@fundora.one" style="color:#38bdf8;text-decoration:none;">admin@fundora.one</a> with any questions.
       </div>
     </div>`;
   }

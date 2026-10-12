@@ -78,7 +78,7 @@ ${cleanOtp ? `<div style="margin:24px 0;text-align:center;"><div style="display:
 <hr style="border:none;border-top:1px solid #1e293b;margin:24px 0;">
 <p style="font-size:12px;color:#64748b;text-align:center;line-height:18px;">
 This is an automated notification from <strong>Fundora.one</strong>.<br>
-If you have any questions, contact support at <a href="mailto:fundora.one@gmail.com" style="color:#38bdf8;text-decoration:none;">fundora.one@gmail.com</a>
+If you have any questions, contact support at <a href="mailto:admin@fundora.one" style="color:#38bdf8;text-decoration:none;">admin@fundora.one</a>
 </p>
 <p style="font-size:12px;color:#64748b;text-align:center;">© 2026 Fundora.one. All rights reserved.</p>
 </td>

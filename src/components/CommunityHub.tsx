@@ -109,7 +109,7 @@ const INITIAL_MESSAGES: Record<string, CommunityMessage[]> = {
       channelId: 'announcements',
       senderId: 'admin-1',
       senderName: 'Fundora Compliance Team',
-      senderEmail: 'fundora.one@gmail.com',
+      senderEmail: 'admin@fundora.one',
       senderRole: 'Admin',
       text: "🚀 **Fundora Official Announcement**: We are thrilled to roll out our Native AI Investment Community! Official announcements, property listings, and yield updates will be posted here.\n\nUK Companies House Registration No. 16870956.",
       timestamp: new Date(Date.now() - 3600000 * 4).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -157,7 +157,7 @@ const MOCK_TRUSTEES = [
   {
     id: 'admin-1',
     name: 'Fundora Support Team',
-    email: 'fundora.one@gmail.com',
+    email: 'admin@fundora.one',
     role: 'Admin',
     avatar: '🛟',
     status: 'Online',
@@ -814,7 +814,7 @@ const isMessageInDmChannel = (m: CommunityMessage, targetChanId: string, current
       } else if (adminPersona === 'support' || activeChannelId.includes('admin-1')) {
         senderId = 'admin-1';
         senderName = 'Fundora Support Team';
-        senderEmail = 'fundora.one@gmail.com';
+        senderEmail = 'admin@fundora.one';
         senderAvatar = '🛟';
       }
     }
@@ -1035,7 +1035,7 @@ const isMessageInDmChannel = (m: CommunityMessage, targetChanId: string, current
       } else if (adminPersona === 'support' || activeChannelId.includes('admin-1')) {
         senderId = 'admin-1';
         senderName = 'Fundora Support Team';
-        senderEmail = 'fundora.one@gmail.com';
+        senderEmail = 'admin@fundora.one';
         senderAvatar = '🛟';
         senderRole = 'Admin';
       } else if (adminPersona === 'ai-bot' || activeChannelId.includes('ai-assistant')) {

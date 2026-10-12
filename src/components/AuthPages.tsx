@@ -587,7 +587,7 @@ export default function AuthPages({ initialScreen = 'login', onAuthSuccess, onNa
       }
 
       const expectedPassword = matchedUser.password ? matchedUser.password.trim() : (matchedUser.role === 'admin' ? 'admin123' : 'user123');
-      const isAdminEmail = cleanEmail === 'fundora.one@gmail.com' || cleanEmail === 'no-reply@fundora.one' || matchedUser.role === 'admin';
+      const isAdminEmail = cleanEmail === 'admin@fundora.one' || cleanEmail === 'fundora.one@gmail.com' || cleanEmail === 'no-reply@fundora.one' || matchedUser.role === 'admin';
       const isPasswordCorrect = (matchedUser.password && matchedUser.password.trim() === password.trim()) || expectedPassword === password.trim() || (isAdminEmail && (password.trim() === 'Abbottabad@123' || password.trim() === 'admin123'));
 
       if (!isPasswordCorrect) {
@@ -631,7 +631,7 @@ export default function AuthPages({ initialScreen = 'login', onAuthSuccess, onNa
       addSystemLog('Login_Success', `Successful login verified for ${matchedUser.email}`, 'Secure');
       saveUserToFirebase({ ...matchedUser });
       onAuthSuccess({ ...matchedUser });
-    } else if (cleanEmail === 'fundora.one@gmail.com' || cleanEmail === 'no-reply@fundora.one') {
+    } else if (cleanEmail === 'admin@fundora.one' || cleanEmail === 'fundora.one@gmail.com' || cleanEmail === 'no-reply@fundora.one') {
       // Emergency Admin access
       if (password.trim() !== 'Abbottabad@123' && password.trim() !== 'admin123') {
         setErrorMsg('Incorrect admin password. Please check your credentials.');
@@ -640,7 +640,7 @@ export default function AuthPages({ initialScreen = 'login', onAuthSuccess, onNa
       }
       const adminAcc: UserAccount = {
         id: 'user-admin',
-        email: 'fundora.one@gmail.com',
+        email: 'admin@fundora.one',
         name: 'Platform Administrator',
         role: 'admin',
         referralCode: 'FUNDORA_HQ',

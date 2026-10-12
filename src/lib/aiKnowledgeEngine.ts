@@ -345,7 +345,7 @@ export const STRUCTURED_FAQ_DATABASE: StructuredFAQ[] = [
       companyName: 'Fundora Real Estate Investment Platform Ltd',
       ukCompanyNumber: '16870956',
       officialDomain: 'https://fundora.one',
-      supportEmail: 'fundora.one@gmail.com',
+      supportEmail: 'admin@fundora.one',
       assetBacking: 'Registered physical property titles in UK & UAE'
     },
     answers: {
@@ -354,21 +354,21 @@ export const STRUCTURED_FAQ_DATABASE: StructuredFAQ[] = [
 • **UK Registration Details**: Fundora Real Estate Investment Platform is legally incorporated in the United Kingdom under **UK Companies House Registration No. 16870956**.
 • **Real Estate Asset Security**: All fractional investments represent fractional beneficial title ownership backed by verified physical deeds in London & Dubai.
 • **Official Website**: https://fundora.one
-• **Official Support Email**: fundora.one@gmail.com`,
+• **Official Support Email**: admin@fundora.one`,
 
       ur: `🏛️ **فنڈورا کی یو کے رسمیاً رجسٹریشن اور قانونی حیثیت**:
 
 • **یو کے رجسٹریشن نمبر**: فنڈورا ریئل اسٹیٹ انویسٹمنٹ پلیٹ فارم برطانیہ میں رسمیاً مسجل ادارہ ہے (**Companies House Reg No. 16870956**)۔
 • **حقیقی پراپرٹی سپورٹ**: تمام انویسٹمنٹس لندن اور دبئی کی تصدیق شدہ کمرشل و رہائشی جائیدادوں کے ڈیجیٹل ڈیدز سے محفوظ ہیں۔
 • **آفیشل ویب سائٹ**: https://fundora.one
-• **ای میل سپورٹ**: fundora.one@gmail.com`,
+• **ای میل سپورٹ**: admin@fundora.one`,
 
       roman_urdu: `🏛️ **Fundora Official UK Registration & Compliance**:
 
 • **UK Companies House Reg No**: **16870956**.
 • **Legal Backing**: Aap ka har share UK aur Dubai ki real physical properties ke beneficial title deeds dwara backed hota hai.
 • **Official Website**: https://fundora.one
-• **Support Email**: fundora.one@gmail.com`,
+• **Support Email**: admin@fundora.one`,
 
       ar: `🏛️ **التسجيل القانوني الرسمي لشركة فندورا في المملكة المتحدة**:
 
@@ -489,31 +489,31 @@ Ji haan! Fundora ki official **Android App (APK)** download ke liye available ha
     ],
     metadata: {
       ceoName: 'Ethan Chiu',
-      supportEmail: 'fundora.one@gmail.com',
+      supportEmail: 'admin@fundora.one',
       communityChannels: ['#general-chat', '#announcements', '#support-help']
     },
     answers: {
       en: `👥 **Fundora Community Hub & Direct Support**:
 
-• **Official Support Email**: fundora.one@gmail.com
+• **Official Support Email**: admin@fundora.one
 • **CEO Direct Contact**: You can directly reach out to CEO **Ethan Chiu** inside the Community Hub under Direct Messages -> **Ethan Chiu (CEO)**.
 • **Community Chat**: Tap the **'Community'** button in the AI Assistant header or open the Community Hub tab to join live channels (#general-chat, #support-help).`,
 
       ur: `👥 **فنڈورا کمیونٹی ہب اور ڈائریکٹ ایڈمن سپورٹ**:
 
-• **آفیشل ای میل**: fundora.one@gmail.com
+• **آفیشل ای میل**: admin@fundora.one
 • **سی ای او سے ڈائریکٹ رابطہ**: آپ کمیونٹی ہب میں **Ethan Chiu (CEO)** کو ڈائریکٹ میسج کر سکتے ہیں۔
 • **کمیونٹی چیٹ**: AI اسسٹنٹ کے اوپر **'Community'** کا بٹن دبائیں اور ممبرز سے بات چیت کریں۔`,
 
       roman_urdu: `👥 **Fundora Community & CEO Support**:
 
-• **Support Email**: fundora.one@gmail.com
+• **Support Email**: admin@fundora.one
 • **CEO Contact**: Community Hub mein Direct Messages se **Ethan Chiu (CEO)** se direct baat karein.
 • **Community Channels**: Top header mein **'Community'** button click karke live group join karein!`,
 
       ar: `👥 **مجتمع فندورا والدعم المباشر والرئيس التنفيذي**:
 
-• **البريد الإلكتروني للدعم**: fundora.one@gmail.com
+• **البريد الإلكتروني للدعم**: admin@fundora.one
 • **الرئيس التنفيذي**: يمكنك التواصل مباشرة مع **Ethan Chiu (CEO)** عبر رسائل المجتمعات المباشرة.`
     }
   },

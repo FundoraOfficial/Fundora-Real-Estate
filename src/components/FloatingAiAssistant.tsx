@@ -535,7 +535,7 @@ export const FloatingAiAssistant: React.FC<FloatingAiAssistantProps> = ({
                             Human Admin Escalation Triggered
                           </div>
                           <p className="text-[11px] text-slate-300">
-                            Need direct support? Email our support team at <a href="mailto:fundora.one@gmail.com" className="text-sky-300 underline">fundora.one@gmail.com</a> or join our Community Support channel.
+                            Need direct support? Email our support team at <a href="mailto:admin@fundora.one" className="text-sky-300 underline">admin@fundora.one</a> or join our Community Support channel.
                           </p>
                           {onNavigateToCommunity && (
                             <button

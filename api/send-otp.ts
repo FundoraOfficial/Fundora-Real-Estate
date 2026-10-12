@@ -92,7 +92,7 @@ If you didn't request this verification, simply ignore this email.
 <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;">
 <p style="font-size:12px;color:#6b7280;text-align:center;line-height:18px;">
 This is an automated notification from <strong>Fundora.one</strong>.<br>
-If you have any questions, contact support at <a href="mailto:fundora.one@gmail.com" style="color:#0d6efd;text-decoration:none;">fundora.one@gmail.com</a>
+If you have any questions, contact support at <a href="mailto:admin@fundora.one" style="color:#0d6efd;text-decoration:none;">admin@fundora.one</a>
 </p>
 <p style="font-size:12px;color:#9ca3af;text-align:center;">
 © 2026 Fundora.one. All rights reserved.

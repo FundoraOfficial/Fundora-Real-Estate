@@ -65,7 +65,7 @@ export const INITIAL_USER: UserAccount = {
 
 export const INITIAL_ADMIN: UserAccount = {
   id: 'user-admin',
-  email: 'fundora.one@gmail.com',
+  email: 'admin@fundora.one',
   name: 'Platform Administrator',
   role: 'admin',
   password: 'Abbottabad@123',

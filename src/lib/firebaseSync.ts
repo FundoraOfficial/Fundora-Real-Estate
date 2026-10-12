@@ -281,7 +281,7 @@ export const loadUsersFromFirebase = async (): Promise<UserAccount[] | null> => 
     console.log(`${tag} SUCCESS: getDocs returned ${snapshot.size} documents in users collection.`);
     if (snapshot.empty) return [INITIAL_USER, INITIAL_ADMIN];
     
-    // Automatically migrate old admin email to fundora.one@gmail.com and clean email strings
+    // Automatically migrate old admin email to admin@fundora.one and clean email strings
     const cleanedUsers: UserAccount[] = [];
     for (const d of snapshot.docs) {
       const u = d.data() as UserAccount;
@@ -295,8 +295,8 @@ export const loadUsersFromFirebase = async (): Promise<UserAccount[] | null> => 
         password: u.password ? u.password.trim() : (u.password || '')
       };
 
-      if (updatedUser.id === 'user-admin' && (updatedUser.email === 'admin@fundora.one' || updatedUser.email === 'no-reply@fundora.one')) {
-        updatedUser = { ...updatedUser, email: 'fundora.one@gmail.com' };
+      if (updatedUser.id === 'user-admin' && (updatedUser.email === 'fundora.one@gmail.com' || updatedUser.email === 'no-reply@fundora.one' || updatedUser.email === 'admin@fundora.one')) {
+        updatedUser = { ...updatedUser, email: 'admin@fundora.one' };
       }
 
       // If email or password was untrimmed or contained uppercase characters, rewrite Firestore document to lowercase/normalized form
@@ -590,8 +590,8 @@ export const subscribeToUsersCollection = (callback: (users: UserAccount[]) => v
           const u = d.data() as UserAccount;
           if (!u || !u.email) return u;
           let cleanEmail = u.email.trim().toLowerCase();
-          if (u.id === 'user-admin' && (cleanEmail === 'admin@fundora.one' || cleanEmail === 'no-reply@fundora.one')) {
-            cleanEmail = 'fundora.one@gmail.com';
+          if (u.id === 'user-admin' && (cleanEmail === 'fundora.one@gmail.com' || cleanEmail === 'no-reply@fundora.one' || cleanEmail === 'admin@fundora.one')) {
+            cleanEmail = 'admin@fundora.one';
           }
           return {
             ...u,
